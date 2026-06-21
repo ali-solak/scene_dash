@@ -1,0 +1,22 @@
+name: headless_example
+description: >-
+  Headless example exercising the scene_dash code generator: object components,
+  a tag, a bundle and two systems wired through a plugin — no Flutter, no
+  flutter_scene, so it runs under `dart test`.
+version: 0.0.1
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  scene_dash:
+    path: ../../packages/scene_dash
+
+dev_dependencies:
+  scene_dash_generator:
+    path: ../../packages/scene_dash_generator
+  build_runner: ^2.15.0
+  lints: ^6.1.0
+  test: ^1.31.1
