@@ -16,6 +16,27 @@ Scene-Dash **complements** `flutter_scene`; it does not replace its scene graph,
 renderer, cameras, nodes, physics world, or frame loop. The integration lets ECS
 systems work directly with those native objects.
 
+## Table of Contents
+
+- [Smallest Complete Example](#smallest-complete-example)
+- [Quick Start](#quick-start)
+- [Feature Tour](#feature-tour)
+  - [Object Components](#object-components)
+  - [Tags and Query Filters](#tags-and-query-filters)
+  - [Bundles](#bundles)
+  - [Commands](#commands)
+  - [Resources](#resources)
+  - [Events](#events)
+  - [Plugins and Schedules](#plugins-and-schedules)
+- [`flutter_scene` Integration](#flutter_scene-integration)
+  - [Direct Node Path: Mutate Nodes Yourself](#direct-node-path-mutate-nodes-yourself)
+  - [ECS-Owned Transforms](#ecs-owned-transforms)
+  - [Scene Commands](#scene-commands)
+- [Physics and Collisions](#physics-and-collisions)
+- [How It Works](#how-it-works)
+- [Packages and Examples](#packages-and-examples)
+- [Verification](#verification)
+
 ## Smallest Complete Example
 
 Scene-Dash code is organized from the app downward:
@@ -543,20 +564,77 @@ final class AddDecorationSystem extends GameSystem {
 
 ## Physics and Collisions
 
-`PhysicsPlugin` is an optional convenience adapter for one default native
-`flutter_scene` `PhysicsWorld` per `Game`.
+Scene-Dash does not implement physics. Use the native `flutter_scene`
+`PhysicsWorld` you want, attach it to the scene graph, then bridge that same
+world into ECS with `PhysicsPlugin`.
 
 ```dart
-final physicsWorld = BasicPhysicsWorld();
-scene.root.addComponent(physicsWorld);
+final physics = BasicPhysicsWorld();
+scene.root.addComponent(physics);
 
 final game = Game(scene: scene)
-  ..addPlugin(PhysicsPlugin(physicsWorld))
+  ..addPlugin(PhysicsPlugin(physics))
   ..addPlugin(const GameplayPlugin());
 ```
 
-The plugin inserts the `PhysicsWorld` as a resource and republishes raw
-`CollisionEvent`s into ECS events.
+`BasicPhysicsWorld` is useful for picking, raycasts, overlap checks, trigger
+events, and kinematic-only gameplay. It does not simulate dynamic rigid bodies.
+For full rigid-body contact response, use a backend world such as a Rapier
+integration; the bridge still works through the same `PhysicsWorld` interface.
+
+Physics objects live on the `flutter_scene` node. The ECS entity usually stores
+a `SceneNodeRef`, plus `PhysicsDriven` when physics owns the transform:
+
+```dart
+@Bundle()
+final class PlayerBodyBundle with _$PlayerBodyBundle {
+  final Player player = const Player();
+  final SceneNodeRef node = SceneNodeRef(
+    Node(mesh: playerMesh)
+      ..addComponent(BasicKinematicBody())
+      ..addComponent(
+        BasicCollider(
+          shape: SphereShape(radius: 0.5),
+          collisionLayer: Layers.player,
+          collisionMask: Layers.world | Layers.pickup,
+        ),
+      ),
+  );
+
+  // Skip generic SceneTransform sync; the physics body/node is authoritative.
+  final PhysicsDriven physics = const PhysicsDriven();
+}
+```
+
+`PhysicsPlugin` inserts the native world as `@Resource() PhysicsWorld`, so
+systems can do immediate scene queries:
+
+```dart
+@System()
+final class GroundProbeSystem extends GameSystem {
+  const GroundProbeSystem();
+
+  void run(
+    @Query(requires: [Player]) Single<SceneNodeRef> player,
+    @Resource() PhysicsWorld physics,
+  ) {
+    final origin = player.value.node.globalTransform.getTranslation();
+    final ground = physics.raycast(
+      Ray.originDirection(origin, Vector3(0, -1, 0)),
+      maxDistance: 2,
+      layerMask: Layers.world,
+      includeTriggers: false,
+    );
+
+    if (ground == null) {
+      // The player is airborne or falling.
+    }
+  }
+}
+```
+
+For collision streams, the plugin registers `CollisionEvent` as an ECS event and
+drains the native async stream at `Schedules.frameStart`.
 
 ```dart
 @System()
@@ -571,9 +649,10 @@ final class ReadCollisionsSystem extends GameSystem {
 }
 ```
 
-For larger games, treat raw collision events as a bridge boundary. Store masks,
-layers, teams, sensors, or hitbox metadata in ordinary components/resources, then
-emit game-specific events:
+For larger games, treat raw collision data as a bridge boundary. Keep gameplay
+semantics in your own components/resources: layers, teams, sensors, hitboxes,
+damage, or entity maps. Then translate physics events or query results into
+game-specific events:
 
 ```dart
 final class HitEvent {
@@ -597,8 +676,9 @@ final class CollisionMask {
 }
 ```
 
-That gives you Rapier-style gameplay semantics without pretending this package
-owns a specific physics backend.
+That keeps the physics backend swappable: Scene-Dash owns scheduling, resources,
+events, and queries; `flutter_scene` and the selected physics backend own
+colliders, bodies, raycasts, overlap checks, and collision generation.
 
 ## How It Works
 
