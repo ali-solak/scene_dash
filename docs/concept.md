@@ -5,7 +5,7 @@ Scene-Dash is an object-based ECS and plugin layer for `flutter_scene`.
 
 Scene-Dash is primarily an ergonomics and architecture project. It does not
 assume an ECS or typed-array storage is automatically faster than straightforward
-object-oriented Dart. Benchmark before making performance claims.
+object-oriented Dart. 
 
 ## Object components
 
