@@ -110,8 +110,8 @@ diagnostics rather than a borrow checker.
 
 System execution can be measured per system and per schedule via
 `AppDiagnostics(profileSystems: true)`. Profiling is off by default and adds no
-overhead to the normal run path. When enabled, the `SystemProfiler` resource keeps
-a reusable `SystemTiming` record per system (run count, total/latest/maximum
-duration, last frame) keyed by the system's stable identity, and can warn when a
-system exceeds a configured `slowSystemThreshold`. See the package documentation
-for details.
+per-system work when disabled. When enabled, the `SystemProfiler` resource keeps
+a reusable `SystemTiming` record per (system, schedule) pair (run count,
+total/latest/maximum duration, last frame) keyed by the system's stable identity
+plus the schedule it ran in, and can warn when a system exceeds a configured
+`slowSystemThreshold`. See the package documentation for details.

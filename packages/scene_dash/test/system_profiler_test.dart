@@ -65,7 +65,10 @@ void main() {
         app.runSchedule(Schedules.update);
         app.runSchedule(Schedules.update);
 
-        final timing = profiler.timingOf(const SystemLabel('pkg#move'));
+        final timing = profiler.timingOf(
+          const SystemLabel('pkg#move'),
+          Schedules.update,
+        );
         expect(timing, isNotNull);
         expect(timing!.runs, 2);
         expect(
@@ -123,7 +126,36 @@ void main() {
 
       expect(app.profiler!.frame, 0);
       // A run after reset re-creates the record from scratch.
-      expect(app.profiler!.timingOf(const SystemLabel('pkg#move'))!.runs, 1);
+      expect(
+        app.profiler!
+            .timingOf(const SystemLabel('pkg#move'), Schedules.update)!
+            .runs,
+        1,
+      );
+    });
+
+    test('keeps a separate record per schedule for the same system', () {
+      const shared = SystemLabel('pkg#shared');
+      final app = App(diagnostics: const AppDiagnostics(profileSystems: true))
+        ..addSystemAdapter(
+          _NoopAdapter(),
+          schedule: Schedules.update,
+          label: shared,
+        )
+        ..addSystemAdapter(
+          _NoopAdapter(),
+          schedule: Schedules.fixedPrePhysics,
+          label: shared,
+        );
+      app.start();
+      app.runSchedule(Schedules.update);
+      app.runSchedule(Schedules.update);
+      app.runSchedule(Schedules.fixedPrePhysics);
+
+      final profiler = app.profiler!;
+      expect(profiler.timingOf(shared, Schedules.update)!.runs, 2);
+      expect(profiler.timingOf(shared, Schedules.fixedPrePhysics)!.runs, 1);
+      expect(profiler.timings, hasLength(2), reason: 'one record per schedule');
     });
   });
 }

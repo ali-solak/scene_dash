@@ -2,8 +2,8 @@ import 'system_profiler.dart';
 
 /// Opt-in diagnostics configuration for an [App].
 ///
-/// Profiling and slow-system warnings are off by default and add nothing to the
-/// normal run path. Enable them from application/debug configuration:
+/// Profiling and slow-system warnings are off by default and add no per-system
+/// work when disabled. Enable them from application/debug configuration:
 ///
 /// ```dart
 /// final app = App(
