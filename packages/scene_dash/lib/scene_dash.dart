@@ -25,8 +25,9 @@ export 'src/commands/bundle.dart';
 export 'src/commands/commands.dart';
 export 'src/commands/entity_commands.dart';
 export 'src/diagnostics/app_diagnostics.dart';
+// system_profiler.dart includes system_timing.dart as a part, so exporting it
+// also exports SystemTiming.
 export 'src/diagnostics/system_profiler.dart';
-export 'src/diagnostics/system_timing.dart';
 export 'src/entity/entity.dart';
 export 'src/entity/entity_registry.dart';
 export 'src/events/event_channel.dart'

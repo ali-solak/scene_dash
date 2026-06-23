@@ -1,13 +1,16 @@
-import '../schedule/schedule_label.dart';
-import '../schedule/system_label.dart';
+part of 'system_profiler.dart';
 
-/// A reusable timing record for a single system, accumulated across frames.
+/// A reusable, read-only timing record for a single (system, schedule) pair,
+/// accumulated across frames.
 ///
-/// One [SystemTiming] is created per system the first time it runs under
-/// profiling and then updated in place — the profiler never allocates a fresh
-/// record per frame. Durations are stored as microsecond integers (no [Duration]
-/// allocation on the hot path) and exposed through [Duration] getters for
-/// display.
+/// One [SystemTiming] is created per (system, schedule) the first time it runs
+/// under profiling and then updated in place by its owning [SystemProfiler] — the
+/// profiler never allocates a fresh record per frame. Durations are stored as
+/// microsecond integers (no [Duration] allocation on the hot path) and exposed
+/// through [Duration] getters for display.
+///
+/// The counters are read-only to outside code: the profiler is exposed as a
+/// `@Resource()`, so only it (in this library) may mutate the record.
 final class SystemTiming {
   SystemTiming({
     required this.label,
@@ -24,37 +27,53 @@ final class SystemTiming {
   /// The schedule this system runs in.
   final ScheduleLabel schedule;
 
+  int _runs = 0;
+  int _totalMicros = 0;
+  int _latestMicros = 0;
+  int _maxMicros = 0;
+  int _lastFrame = -1;
+
   /// Number of times the system has run.
-  int runs = 0;
+  int get runs => _runs;
 
   /// Total time spent in the system, in microseconds.
-  int totalMicros = 0;
+  int get totalMicros => _totalMicros;
 
   /// Time spent in the most recent run, in microseconds.
-  int latestMicros = 0;
+  int get latestMicros => _latestMicros;
 
   /// The slowest single run observed, in microseconds.
-  int maxMicros = 0;
+  int get maxMicros => _maxMicros;
 
   /// The frame number of the most recent run (-1 until first run).
-  int lastFrame = -1;
+  int get lastFrame => _lastFrame;
 
   /// Total time spent in the system.
-  Duration get total => Duration(microseconds: totalMicros);
+  Duration get total => Duration(microseconds: _totalMicros);
 
   /// Time spent in the most recent run.
-  Duration get latest => Duration(microseconds: latestMicros);
+  Duration get latest => Duration(microseconds: _latestMicros);
 
   /// The slowest single run observed.
-  Duration get maximum => Duration(microseconds: maxMicros);
+  Duration get maximum => Duration(microseconds: _maxMicros);
 
   /// Mean time per run (zero before the first run).
-  Duration get average =>
-      runs == 0 ? Duration.zero : Duration(microseconds: totalMicros ~/ runs);
+  Duration get average => _runs == 0
+      ? Duration.zero
+      : Duration(microseconds: _totalMicros ~/ _runs);
+
+  /// Accumulates one run. Library-private: only [SystemProfiler] calls this.
+  void _record(int micros, int frame) {
+    _runs += 1;
+    _totalMicros += micros;
+    _latestMicros = micros;
+    if (micros > _maxMicros) _maxMicros = micros;
+    _lastFrame = frame;
+  }
 
   @override
   String toString() {
-    final ms = (latestMicros / 1000).toStringAsFixed(2);
+    final ms = (_latestMicros / 1000).toStringAsFixed(2);
     return '$debugName  $ms ms';
   }
 }

@@ -1,6 +1,7 @@
 import '../schedule/schedule_label.dart';
 import '../schedule/system_label.dart';
-import 'system_timing.dart';
+
+part 'system_timing.dart';
 
 /// Emitted when a system's run exceeds the configured slow-system threshold.
 final class SlowSystemEvent {
@@ -86,12 +87,7 @@ final class SystemProfiler {
       debugName: _shortName(label.id),
       schedule: schedule,
     );
-    timing
-      ..runs += 1
-      ..totalMicros += micros
-      ..latestMicros = micros
-      ..lastFrame = _frame;
-    if (micros > timing.maxMicros) timing.maxMicros = micros;
+    timing._record(micros, _frame);
 
     final threshold = _slowMicros;
     if (threshold != null && micros >= threshold) {
