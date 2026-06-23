@@ -1,6 +1,12 @@
 # Scene-Dash
 
-Scene-Dash uses an object-based ECS designed around Dart. Components are ordinary mutable objects, queries return direct references, and generated adapters handle system and bundle wiring without runtime reflection. It integrates with flutter_scene while keeping the ECS core usable on its own.
+## Early prerelease
+
+Scene-Dash is under active development. APIs may change between development releases. It is published for experimentation, examples, and design feedback.
+
+Scene-Dash is a Bevy-inspired game framework built on top of [`flutter_scene`](https://pub.dev/packages/flutter_scene). It uses an object-based ECS designed for Dart: components are ordinary mutable objects, queries return direct references, and generated adapters handle system and bundle wiring without runtime reflection.
+
+The ECS core can also be used independently of Flutter and `flutter_scene`.
 
 ```dart
 final game = Game(scene: scene)
