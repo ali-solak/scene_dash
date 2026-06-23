@@ -60,8 +60,9 @@ class $UpdateProjectilesSystemAdapter
   final UpdateProjectilesSystem _system;
   late final Query2<Projectile, SceneNodeRef> _p0;
   late final PhysicsWorld _p1;
-  late final FrameTime _p2;
-  late final Commands _p3;
+  late final ImpactVfx _p2;
+  late final FrameTime _p3;
+  late final Commands _p4;
 
   @override
   void initialize(World world) {
@@ -72,8 +73,9 @@ class $UpdateProjectilesSystemAdapter
       withoutTypes: const <Type>[],
     );
     _p1 = world.resources.get<PhysicsWorld>();
-    _p2 = world.resources.get<FrameTime>();
-    _p3 = world.commands;
+    _p2 = world.resources.get<ImpactVfx>();
+    _p3 = world.resources.get<FrameTime>();
+    _p4 = world.commands;
   }
 
   @override
@@ -84,7 +86,7 @@ class $UpdateProjectilesSystemAdapter
 
   @override
   void run() {
-    _system.run(_p0, _p1, _p2, _p3);
+    _system.run(_p0, _p1, _p2, _p3, _p4);
   }
 }
 
@@ -98,47 +100,64 @@ final updateProjectilesSystem = SystemDescriptor(
   () => $UpdateProjectilesSystemAdapter(const UpdateProjectilesSystem()),
 );
 
-class $UpdateProjectileVfxSystemAdapter
-    implements SystemAdapter, SystemAccessProvider {
-  $UpdateProjectileVfxSystemAdapter(this._system);
-
-  final UpdateProjectileVfxSystem _system;
-  late final Query2<VfxEffect, SceneNodeRef> _p0;
-  late final FrameTime _p1;
-  late final Commands _p2;
+class $SpawnImpactVfxAdapter implements SystemAdapter, SystemAccessProvider {
+  late final Scene _p0;
+  late final ImpactVfx _p1;
 
   @override
   void initialize(World world) {
-    world.ensureObjectStore<VfxEffect>();
-    world.ensureObjectStore<SceneNodeRef>();
-    _p0 = world.query2<VfxEffect, SceneNodeRef>(
-      withTypes: const <Type>[],
-      withoutTypes: const <Type>[],
-    );
-    _p1 = world.resources.get<FrameTime>();
-    _p2 = world.commands;
+    _p0 = world.resources.get<Scene>();
+    _p1 = world.resources.get<ImpactVfx>();
   }
 
   @override
-  SystemAccess get access => const SystemAccess(
-    reads: <Type>{SceneNodeRef},
-    writes: <Type>{VfxEffect},
-  );
+  SystemAccess get access =>
+      const SystemAccess(reads: <Type>{}, writes: <Type>{});
 
   @override
   void run() {
-    _system.run(_p0, _p1, _p2);
+    spawnImpactVfx(_p0, _p1);
   }
 }
 
-/// Schedulable descriptor for [UpdateProjectileVfxSystem]. Pass to `app.addSystem` and reference in
+/// Schedulable descriptor for [spawnImpactVfx]. Pass to `app.addSystem` and reference in
 /// `after`/`before`.
-final updateProjectileVfxSystem = SystemDescriptor(
+final spawnImpactVfxSystem = SystemDescriptor(
   const SystemRef(
     'package:scene_game/projectiles/projectiles.dart',
-    'UpdateProjectileVfxSystem',
+    'spawnImpactVfx',
   ),
-  () => $UpdateProjectileVfxSystemAdapter(const UpdateProjectileVfxSystem()),
+  () => $SpawnImpactVfxAdapter(),
+);
+
+class $UpdateImpactVfxAdapter implements SystemAdapter, SystemAccessProvider {
+  late final ImpactVfx _p0;
+  late final FrameTime _p1;
+
+  @override
+  void initialize(World world) {
+    _p0 = world.resources.get<ImpactVfx>();
+    _p1 = world.resources.get<FrameTime>();
+  }
+
+  @override
+  SystemAccess get access =>
+      const SystemAccess(reads: <Type>{}, writes: <Type>{});
+
+  @override
+  void run() {
+    updateImpactVfx(_p0, _p1);
+  }
+}
+
+/// Schedulable descriptor for [updateImpactVfx]. Pass to `app.addSystem` and reference in
+/// `after`/`before`.
+final updateImpactVfxSystem = SystemDescriptor(
+  const SystemRef(
+    'package:scene_game/projectiles/projectiles.dart',
+    'updateImpactVfx',
+  ),
+  () => $UpdateImpactVfxAdapter(),
 );
 
 mixin _$ProjectileBundle implements SceneDashBundle {
@@ -148,14 +167,5 @@ mixin _$ProjectileBundle implements SceneDashBundle {
     world.ensureObjectStore<Projectile>().insert(entity.index, self.projectile);
     world.ensureObjectStore<SceneNodeRef>().insert(entity.index, self.node);
     world.ensureTagStore<PhysicsDriven>().add(entity.index);
-  }
-}
-
-mixin _$ImpactVfxBundle implements SceneDashBundle {
-  @override
-  void insertInto(World world, Entity entity) {
-    final self = this as ImpactVfxBundle;
-    world.ensureObjectStore<SceneNodeRef>().insert(entity.index, self.node);
-    world.ensureObjectStore<VfxEffect>().insert(entity.index, self.effect);
   }
 }

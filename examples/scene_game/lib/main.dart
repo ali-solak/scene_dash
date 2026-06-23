@@ -5,6 +5,7 @@ import 'package:flutter_scene_rapier/flutter_scene_rapier.dart';
 import 'package:scene_dash_flutter_scene/scene_dash_flutter_scene.dart';
 import 'package:vector_math/vector_math.dart' show Vector3;
 
+import 'decor/decor.dart';
 import 'game/camera.dart';
 import 'game/camera_rig.dart';
 import 'game/config.dart';
@@ -45,6 +46,7 @@ Future<void> main() async {
     ..addPlugin(const ProjectilesPlugin())
     ..addPlugin(const RocksPlugin())
     ..addPlugin(const RulesPlugin())
+    ..addPlugin(const DecorPlugin())
     ..insertResource<InputState>(input)
     ..insertResource<GameState>(gameState)
     ..insertResource<CameraRig>(cameraRig);

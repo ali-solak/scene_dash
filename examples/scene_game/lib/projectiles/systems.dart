@@ -41,6 +41,7 @@ final class UpdateProjectilesSystem extends GameSystem {
   void run(
     @Query(writes: [Projectile]) Query2<Projectile, SceneNodeRef> projectiles,
     @Resource() PhysicsWorld physics,
+    @Resource() ImpactVfx vfx,
     @Resource() FrameTime time,
     Commands commands,
   ) {
@@ -57,9 +58,8 @@ final class UpdateProjectilesSystem extends GameSystem {
       }
 
       if (_knockFirstRock(physics, position)) {
-        commands
-          ..spawn(impactSparkBundle(position))
-          ..spawn(impactRingBundle(position));
+        // Fire pooled instanced VFX instead of spawning per-hit entities/nodes.
+        vfx.emit(position);
         commands.despawn(entity);
       }
     });
@@ -99,54 +99,83 @@ final class UpdateProjectilesSystem extends GameSystem {
   }
 }
 
+/// Startup: build the spark and ring instanced pools and add their nodes.
 @System()
-final class UpdateProjectileVfxSystem extends GameSystem {
-  const UpdateProjectileVfxSystem();
+void spawnImpactVfx(@Resource() Scene scene, @Resource() ImpactVfx vfx) {
+  vfx.sparkPool = InstancedPool(
+    geometry: SphereGeometry(radius: 0.22, segments: 12, rings: 6),
+    material: glowMaterial(Vector4(0.56, 0.92, 1.0, 0.4), alpha: 0.4),
+    capacity: _sparkCapacity,
+  )..addTo(scene);
+  vfx.ringPool = InstancedPool(
+    geometry: ringGeometry(thickness: 0.16),
+    material: glowMaterial(Vector4(0.44, 0.82, 1.0, 0.28), alpha: 0.28),
+    capacity: _ringCapacity,
+  )..addTo(scene);
+}
 
-  void run(
-    @Query(writes: [VfxEffect]) Query2<VfxEffect, SceneNodeRef> effects,
-    @Resource() FrameTime time,
-    Commands commands,
-  ) {
-    final dt = time.delta;
-    effects.each((entity, effect, binding) {
-      if (!effect.initialized) {
-        effect.origin.setFrom(binding.node.localTransform.getTranslation());
-        effect.initialized = true;
-      }
+/// Update: advance both pools. Allocation-free — one scratch matrix per pool,
+/// reused for every instance. 0.18 instancing is transform-only, so the fade is
+/// scale-based: each puff grows toward its end scale, then shrinks to nothing.
+@System()
+void updateImpactVfx(@Resource() ImpactVfx vfx, @Resource() FrameTime time) {
+  final dt = time.delta;
+  _advanceBurst(
+    vfx.sparkPool,
+    vfx.sparkAge,
+    vfx.sparkOrigin,
+    dt,
+    duration: _sparkDuration,
+    startScale: 0.45,
+    endScale: 1.15,
+    floatUp: 0.3,
+    spin: 0.8,
+  );
+  _advanceBurst(
+    vfx.ringPool,
+    vfx.ringAge,
+    vfx.ringOrigin,
+    dt,
+    duration: _ringDuration,
+    startScale: 0.4,
+    endScale: 1.8,
+    spin: 0.7,
+  );
+}
 
-      effect.age += dt;
-      final t = (effect.age / effect.duration).clamp(0, 1).toDouble();
-      final ease = 1 - math.pow(1 - t, 3).toDouble();
-      final fade = (1 - t) * (1 - t);
-      final scale =
-          effect.startScale + (effect.endScale - effect.startScale) * ease;
-      final pos = Vector3(
-        effect.origin.x,
-        effect.origin.y + effect.floatUp * ease,
-        effect.origin.z,
-      );
-
-      effect.material
-        ..baseColorFactor = Vector4(
-          effect.color.x,
-          effect.color.y,
-          effect.color.z,
-          effect.color.w * fade,
-        )
-        ..emissiveFactor = Vector4(
-          effect.color.x * 1.8 * fade,
-          effect.color.y * 1.8 * fade,
-          effect.color.z * 1.8 * fade,
-          1,
-        );
-      binding.node.localTransform = Matrix4.translation(pos)
-        ..rotateY(effect.spin * t)
-        ..scaleByDouble(scale, scale, scale, 1);
-
-      if (effect.age >= effect.duration) {
-        commands.despawn(entity);
-      }
-    });
+/// Advances one burst pool: ages each live instance and writes its grow-then-pop
+/// transform; free slots (age past [duration]) are skipped (already hidden).
+void _advanceBurst(
+  InstancedPool? pool,
+  Float32List age,
+  Float32List origin,
+  double dt, {
+  required double duration,
+  required double startScale,
+  required double endScale,
+  double floatUp = 0,
+  double spin = 0,
+}) {
+  if (pool == null) return;
+  final scratch = pool.scratch;
+  for (var i = 0; i < age.length; i++) {
+    final a = age[i];
+    if (a >= duration) continue;
+    final next = a + dt;
+    age[i] = next;
+    final t = (next / duration).clamp(0.0, 1.0);
+    final ease = 1 - math.pow(1 - t, 3).toDouble();
+    final fade = (1 - t) * (1 - t);
+    final s = (startScale + (endScale - startScale) * ease) * fade;
+    scratch
+      ..setIdentity()
+      ..setTranslationRaw(
+        origin[i * 3],
+        origin[i * 3 + 1] + floatUp * ease,
+        origin[i * 3 + 2],
+      )
+      ..rotateY(spin * t)
+      ..scaleByDouble(s, s, s, 1);
+    pool.mesh.setInstanceTransform(i, scratch);
   }
 }

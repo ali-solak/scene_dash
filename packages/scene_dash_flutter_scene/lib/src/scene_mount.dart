@@ -29,6 +29,12 @@ import 'scene_node_ref.dart';
 /// so a bound node is already parented and tagged by the time gameplay reads it.
 final class SceneNodeMountAdapter implements SystemAdapter {
   final SceneCommands _sceneCommands;
+
+  /// Live node → entity index shared with the `SceneNodeIndex` resource. Updated
+  /// from this adapter's existing per-frame scan over bound nodes, so the reverse
+  /// lookup costs no extra allocation.
+  final Map<Node, Entity> _index;
+
   late final World _world;
   late final Query1<SceneNodeRef> _bound;
 
@@ -43,7 +49,7 @@ final class SceneNodeMountAdapter implements SystemAdapter {
   final List<Entity> _toTag = <Entity>[];
   final List<Entity> _toUntag = <Entity>[];
 
-  SceneNodeMountAdapter(this._sceneCommands);
+  SceneNodeMountAdapter(this._sceneCommands, this._index);
 
   @override
   void initialize(World world) {
@@ -62,6 +68,9 @@ final class SceneNodeMountAdapter implements SystemAdapter {
     _bound.each((entity, binding) {
       final node = binding.node;
       _seen.add(node);
+      // Maintain the reverse node -> entity index for every bound node (not just
+      // ones we mount), so picking can resolve any visible node to its entity.
+      _index[node] = entity;
       if (_mounted.containsKey(node)) return;
       // Adopt only nodes that have no parent yet; a node the game parented
       // itself is left alone (and never tracked for auto-detach).
@@ -79,6 +88,10 @@ final class SceneNodeMountAdapter implements SystemAdapter {
       _toUntag.add(entity);
       return true;
     });
+    // Prune index entries whose node is no longer bound (despawn, component
+    // removal, or replacement). Reuses the scan's _seen set, no allocation.
+    _index.removeWhere((node, _) => !_seen.contains(node));
+
     // Apply Mounted-tag changes now the bound query is no longer iterating.
     // Untag first so a same-entity node replacement (untag old, tag new) ends
     // up tagged. Despawn already strips the tag, so only touch live entities.

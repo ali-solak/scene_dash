@@ -76,6 +76,66 @@ final cleanupRocksSystem = SystemDescriptor(
   () => $CleanupRocksSystemAdapter(const CleanupRocksSystem()),
 );
 
+class $SpawnRockTrailsAdapter implements SystemAdapter, SystemAccessProvider {
+  late final Scene _p0;
+  late final RockTrails _p1;
+
+  @override
+  void initialize(World world) {
+    _p0 = world.resources.get<Scene>();
+    _p1 = world.resources.get<RockTrails>();
+  }
+
+  @override
+  SystemAccess get access =>
+      const SystemAccess(reads: <Type>{}, writes: <Type>{});
+
+  @override
+  void run() {
+    spawnRockTrails(_p0, _p1);
+  }
+}
+
+/// Schedulable descriptor for [spawnRockTrails]. Pass to `app.addSystem` and reference in
+/// `after`/`before`.
+final spawnRockTrailsSystem = SystemDescriptor(
+  const SystemRef('package:scene_game/rocks/rocks.dart', 'spawnRockTrails'),
+  () => $SpawnRockTrailsAdapter(),
+);
+
+class $UpdateRockTrailsAdapter implements SystemAdapter, SystemAccessProvider {
+  late final Query1<SceneNodeRef> _p0;
+  late final RockTrails _p1;
+
+  @override
+  void initialize(World world) {
+    world.ensureObjectStore<SceneNodeRef>();
+    world.ensureTagStore<Rock>();
+    world.ensureTagStore<Flaming>();
+    _p0 = world.query1<SceneNodeRef>(
+      withTypes: const <Type>[Rock, Flaming],
+      withoutTypes: const <Type>[],
+    );
+    _p1 = world.resources.get<RockTrails>();
+  }
+
+  @override
+  SystemAccess get access =>
+      const SystemAccess(reads: <Type>{SceneNodeRef}, writes: <Type>{});
+
+  @override
+  void run() {
+    updateRockTrails(_p0, _p1);
+  }
+}
+
+/// Schedulable descriptor for [updateRockTrails]. Pass to `app.addSystem` and reference in
+/// `after`/`before`.
+final updateRockTrailsSystem = SystemDescriptor(
+  const SystemRef('package:scene_game/rocks/rocks.dart', 'updateRockTrails'),
+  () => $UpdateRockTrailsAdapter(),
+);
+
 mixin _$RockBundle implements SceneDashBundle {
   @override
   void insertInto(World world, Entity entity) {

@@ -30,7 +30,9 @@ final class RockBundle with _$RockBundle {
     );
     if (flaming) {
       node.mesh = Mesh(SphereGeometry(radius: rockRadius), _flamingMaterial);
-      node.addComponent(FlameTrail());
+      // The flame trail is an ECS component + shared instanced pool (see
+      // systems.dart), inserted on the entity by SpawnRocksSystem — not a
+      // per-rock flutter_scene component here.
     }
 
     return node

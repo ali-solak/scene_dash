@@ -57,6 +57,20 @@ final class SetupWorldSystem extends GameSystem {
       ..radius = 0.82
       ..smoothness = 0.62;
 
+    // New flutter_scene 0.18 render knobs need no bridge code — they are plain
+    // properties on the injected `@Resource() Scene`:
+    scene
+      // MSAA where the backend supports it, FXAA otherwise (the default).
+      ..antiAliasingMode = AntiAliasingMode.auto
+      // 1.0 = native resolution; <1.0 trades sharpness for speed, >1.0 supersamples.
+      ..renderScale = 1.0;
+    // Screen-space ambient occlusion grounds the player/rocks in the ramp's
+    // creases (off by default; requires the PerspectiveCamera this game uses).
+    scene.ambientOcclusion
+      ..enabled = true
+      ..intensity = 1.1
+      ..radius = 0.4;
+
     final ramp =
         Node(
             mesh: Mesh(

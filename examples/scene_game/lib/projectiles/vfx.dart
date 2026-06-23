@@ -1,5 +1,6 @@
 part of 'projectiles.dart';
 
+/// A translucent additive-ish glow material for projectile and impact visuals.
 PhysicallyBasedMaterial glowMaterial(Vector4 color, {double alpha = 1}) {
   final visible = Vector4(color.x, color.y, color.z, color.w * alpha);
   return PhysicallyBasedMaterial()
@@ -10,54 +11,7 @@ PhysicallyBasedMaterial glowMaterial(Vector4 color, {double alpha = 1}) {
     ..alphaMode = AlphaMode.blend;
 }
 
-ImpactVfxBundle impactSparkBundle(Vector3 position) {
-  final color = Vector4(0.56, 0.92, 1.0, 0.4);
-  final material = glowMaterial(color, alpha: color.w);
-  return ImpactVfxBundle(
-    SceneNodeRef(
-      Node(
-        mesh: Mesh(
-          SphereGeometry(radius: 0.22, segments: 12, rings: 6),
-          material,
-        ),
-        localTransform: Matrix4.translation(position),
-      )..frustumCulled = false,
-    ),
-    VfxEffect(
-      material: material,
-      color: color,
-      duration: 0.24,
-      startScale: 0.45,
-      endScale: 1.15,
-      floatUp: 0.3,
-      spin: 0.8,
-    ),
-  );
-}
-
-ImpactVfxBundle impactRingBundle(Vector3 position) {
-  final color = Vector4(0.44, 0.82, 1.0, 0.28);
-  final material = glowMaterial(color, alpha: color.w);
-  return ImpactVfxBundle(
-    SceneNodeRef(
-      Node(
-        mesh: Mesh(ringGeometry(thickness: 0.16), material),
-        localTransform: Matrix4.translation(
-          Vector3(position.x, playerGroundYAtZ(position.z) + 0.03, position.z),
-        ),
-      )..frustumCulled = false,
-    ),
-    VfxEffect(
-      material: material,
-      color: color,
-      duration: 0.34,
-      startScale: 0.4,
-      endScale: 1.8,
-      spin: 0.7,
-    ),
-  );
-}
-
+/// A flat ring in the XZ plane, radius ~0.5, used for the impact shockwave.
 MeshGeometry ringGeometry({int segments = 32, double thickness = 0.12}) {
   final inner = (0.5 - thickness * 0.5).clamp(0.02, 0.49);
   final outer = 0.5 + thickness * 0.5;

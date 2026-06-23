@@ -26,6 +26,7 @@ export 'src/physics_event_bridge.dart';
 export 'src/physics_plugin.dart';
 export 'src/scene_commands.dart';
 export 'src/scene_mount.dart';
+export 'src/scene_node_index.dart';
 export 'src/scene_node_ref.dart';
 export 'src/scene_sync.dart';
 export 'src/scene_transform.dart';

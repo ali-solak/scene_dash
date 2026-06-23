@@ -6,49 +6,6 @@ part of 'rules.dart';
 // EcsGenerator
 // **************************************************************************
 
-class $GameRulesSystemAdapter implements SystemAdapter, SystemAccessProvider {
-  $GameRulesSystemAdapter(this._system);
-
-  final GameRulesSystem _system;
-  late final Single<SceneNodeRef> _p0;
-  late final PhysicsWorld _p1;
-  late final GameState _p2;
-  late final FrameTime _p3;
-  late final ImpactMotion _p4;
-
-  @override
-  void initialize(World world) {
-    world.ensureObjectStore<SceneNodeRef>();
-    world.ensureTagStore<Player>();
-    _p0 = Single<SceneNodeRef>(
-      world.query1<SceneNodeRef>(
-        withTypes: const <Type>[Player],
-        withoutTypes: const <Type>[],
-      ),
-    );
-    _p1 = world.resources.get<PhysicsWorld>();
-    _p2 = world.resources.get<GameState>();
-    _p3 = world.resources.get<FrameTime>();
-    _p4 = world.resources.get<ImpactMotion>();
-  }
-
-  @override
-  SystemAccess get access =>
-      const SystemAccess(reads: <Type>{SceneNodeRef}, writes: <Type>{});
-
-  @override
-  void run() {
-    _system.run(_p0, _p1, _p2, _p3, _p4);
-  }
-}
-
-/// Schedulable descriptor for [GameRulesSystem]. Pass to `app.addSystem` and reference in
-/// `after`/`before`.
-final gameRulesSystem = SystemDescriptor(
-  const SystemRef('package:scene_game/rules/rules.dart', 'GameRulesSystem'),
-  () => $GameRulesSystemAdapter(const GameRulesSystem()),
-);
-
 class $PlayerViewSystemAdapter implements SystemAdapter, SystemAccessProvider {
   $PlayerViewSystemAdapter(this._system);
 
@@ -139,4 +96,44 @@ class $RestartSystemAdapter implements SystemAdapter, SystemAccessProvider {
 final restartSystem = SystemDescriptor(
   const SystemRef('package:scene_game/rules/rules.dart', 'RestartSystem'),
   () => $RestartSystemAdapter(const RestartSystem()),
+);
+
+class $EvaluateGameRulesAdapter implements SystemAdapter, SystemAccessProvider {
+  late final Single<SceneNodeRef> _p0;
+  late final PhysicsWorld _p1;
+  late final GameState _p2;
+  late final FrameTime _p3;
+  late final ImpactMotion _p4;
+
+  @override
+  void initialize(World world) {
+    world.ensureObjectStore<SceneNodeRef>();
+    world.ensureTagStore<Player>();
+    _p0 = Single<SceneNodeRef>(
+      world.query1<SceneNodeRef>(
+        withTypes: const <Type>[Player],
+        withoutTypes: const <Type>[],
+      ),
+    );
+    _p1 = world.resources.get<PhysicsWorld>();
+    _p2 = world.resources.get<GameState>();
+    _p3 = world.resources.get<FrameTime>();
+    _p4 = world.resources.get<ImpactMotion>();
+  }
+
+  @override
+  SystemAccess get access =>
+      const SystemAccess(reads: <Type>{SceneNodeRef}, writes: <Type>{});
+
+  @override
+  void run() {
+    evaluateGameRules(_p0, _p1, _p2, _p3, _p4);
+  }
+}
+
+/// Schedulable descriptor for [evaluateGameRules]. Pass to `app.addSystem` and reference in
+/// `after`/`before`.
+final evaluateGameRulesSystem = SystemDescriptor(
+  const SystemRef('package:scene_game/rules/rules.dart', 'evaluateGameRules'),
+  () => $EvaluateGameRulesAdapter(),
 );

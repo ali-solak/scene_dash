@@ -422,8 +422,7 @@ List<DartType> _typeList(ConstantReader? reader, String field) {
   final value = reader.read(field);
   if (value.isNull) return const <DartType>[];
   return [
-    for (final entry in value.listValue)
-      if (entry.toTypeValue() case final t?) t,
+    for (final entry in value.listValue) ?entry.toTypeValue(),
   ];
 }
 

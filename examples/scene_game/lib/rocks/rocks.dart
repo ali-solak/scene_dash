@@ -6,6 +6,7 @@ import 'package:scene_dash/scene_dash.dart';
 import 'package:scene_dash_flutter_scene/scene_dash_flutter_scene.dart';
 import 'package:vector_math/vector_math.dart' show Matrix4, Vector3, Vector4;
 
+import '../fx/instanced_pool.dart';
 import '../game/config.dart';
 import '../game/game_state.dart';
 
@@ -25,7 +26,10 @@ final class RocksPlugin extends Plugin {
   void build(AppBuilder app) {
     app
       ..insertResource<RockSpawner>(RockSpawner())
+      ..insertResource<RockTrails>(RockTrails())
+      ..addSystem(spawnRockTrailsSystem, schedule: Schedules.startup)
       ..addSystem(spawnRocksSystem, schedule: Schedules.fixedPrePhysics)
-      ..addSystem(cleanupRocksSystem, schedule: Schedules.update);
+      ..addSystem(cleanupRocksSystem, schedule: Schedules.update)
+      ..addSystem(updateRockTrailsSystem, schedule: Schedules.update);
   }
 }

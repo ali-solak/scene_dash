@@ -1,10 +1,11 @@
-import 'package:flutter_scene/scene.dart' show Scene;
+import 'package:flutter_scene/scene.dart' show Node, Scene;
 import 'package:scene_dash/scene_dash.dart';
 
 import 'ecs_frame_loop.dart';
 import 'scene_commands.dart';
 import 'scene_driver.dart';
 import 'scene_mount.dart';
+import 'scene_node_index.dart';
 import 'scene_sync.dart';
 import 'scene_transform.dart';
 
@@ -42,10 +43,14 @@ final class Game {
   /// startup). Also injectable into systems as an `@Resource()`.
   late final SceneCommands sceneCommands = SceneCommands(scene.root);
 
+  /// Live node → entity index, exposed to systems as a [SceneNodeIndex] resource
+  /// and maintained by the mount adapter.
+  final Map<Node, Entity> _nodeIndex = <Node, Entity>{};
+
   /// Mounts entity-bound nodes into the scene. Owned by `Game` (not registered
   /// in a schedule) so it can run *before* the `update` phase — see [_mountStep].
   late final SceneNodeMountAdapter _mountAdapter =
-      SceneNodeMountAdapter(sceneCommands);
+      SceneNodeMountAdapter(sceneCommands, _nodeIndex);
 
   late final EcsFrameLoop _loop = EcsFrameLoop(
     app,
@@ -113,7 +118,8 @@ final class Game {
     // on `@Resource() Scene`.
     app.world.resources
       ..insert<Scene>(scene)
-      ..insert<SceneCommands>(sceneCommands);
+      ..insert<SceneCommands>(sceneCommands)
+      ..insert<SceneNodeIndex>(SceneNodeIndex(_nodeIndex));
     // Standard integration system (renderSync): sync the standard SceneTransform
     // onto bound nodes after the gameplay `update` phase. Node mounting is *not*
     // a renderSync system — it runs before `update` (see _mountStep) so gameplay

@@ -26,7 +26,7 @@ final class RulesPlugin extends Plugin {
       // and registered here rather than in main().
       ..insertResource<ImpactMotion>(ImpactMotion())
       ..addSystem(restartSystem, schedule: Schedules.frameStart)
-      ..addSystem(gameRulesSystem, schedule: Schedules.update)
+      ..addSystem(evaluateGameRulesSystem, schedule: Schedules.update)
       ..addSystem(playerViewSystem, schedule: Schedules.update);
   }
 }

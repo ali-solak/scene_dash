@@ -32,6 +32,7 @@ systems work directly with those native objects.
   - [Direct Node Path: Mutate Nodes Yourself](#direct-node-path-mutate-nodes-yourself)
   - [ECS-Owned Transforms](#ecs-owned-transforms)
   - [Scene Commands](#scene-commands)
+- [Using flutter_scene Features (No Bridge Needed)](#using-flutter_scene-features-no-bridge-needed)
 - [Physics and Collisions](#physics-and-collisions)
 - [How It Works](#how-it-works)
 - [Packages and Examples](#packages-and-examples)
@@ -94,35 +95,26 @@ final class CubeOrbitPlugin extends Plugin {
   void build(AppBuilder app) {
     app
       ..addSystem(spawnCubeSystem, schedule: Schedules.startup)
-      ..addSystem(orbitSystem, schedule: Schedules.update);
+      ..addSystem(orbitCubesSystem, schedule: Schedules.update);
   }
 }
 
 @System()
-final class SpawnCubeSystem extends GameSystem {
-  const SpawnCubeSystem();
-
-  void run(Commands commands) {
-    commands.spawn(CubeBundle());
-  }
+void spawnCube(Commands commands) {
+  commands.spawn(CubeBundle());
 }
 
 @System()
-final class OrbitSystem extends GameSystem {
-  const OrbitSystem();
-
-  void run(
-    @Query(writes: [SceneTransform, Orbit])
-    Query2<SceneTransform, Orbit> movers,
-    @Resource() FrameTime time,
-  ) {
-    movers.each((entity, transform, orbit) {
-      orbit.phase += orbit.speed * time.delta;
-      transform
-        ..x = orbit.radius * cos(orbit.phase)
-        ..z = orbit.radius * sin(orbit.phase);
-    });
-  }
+void orbitCubes(
+  @Query(writes: [SceneTransform, Orbit]) Query2<SceneTransform, Orbit> movers,
+  @Resource() FrameTime time,
+) {
+  movers.each((entity, transform, orbit) {
+    orbit.phase += orbit.speed * time.delta;
+    transform
+      ..x = orbit.radius * cos(orbit.phase)
+      ..z = orbit.radius * sin(orbit.phase);
+  });
 }
 
 @ObjectComponent()
@@ -155,6 +147,11 @@ That is the whole loop: `Game` drives schedules from `SceneView`, plugins add
 generated system descriptors like `spawnCubeSystem`, startup spawns an entity
 with a `SceneTransform` and `SceneNodeRef`, and the integration mounts the node
 and syncs the transform to `flutter_scene`.
+
+A `@System` can be a **top-level function** (as above — the most concise form, no
+class, constructor, or mixin) or a **class** that `extends GameSystem` when it
+needs its own fields/state. Both generate the same kind of descriptor
+(`spawnCube` → `spawnCubeSystem`), so the plugin registration is identical.
 
 The same ECS core also works without Flutter for headless tests and simulations:
 
@@ -277,6 +274,22 @@ Queries support positive and negative filters:
 Query2<Position, Velocity> movers
 ```
 
+For an entity that should be unique (the player, a camera rig), inject a
+`Single<A>` instead of iterating — it resolves the one match and throws a clear
+error on zero or many:
+
+```dart
+@System()
+void readPlayer(
+  @Query(requires: [Player]) Single<Position> player,
+) {
+  final pos = player.value; // the one Position, no loop, no null dance
+}
+```
+
+`OptionalSingle<A>` allows zero matches (`.valueOrNull`) but still rejects more
+than one. `Query1..4` also expose `single()`, `singleOrNull()`, and `isEmpty`.
+
 ### Bundles
 
 `@Bundle()` is a typed spawn recipe. The generator emits the insertion code, so
@@ -357,10 +370,20 @@ final class ReadInputSystem extends GameSystem {
 }
 ```
 
-Plugins insert resources:
+Each resource is owned by one place — the plugin that uses it, or a single
+insertion through the game for a dependency the Flutter widget also holds.
+`insertResource` **fails loud** on a duplicate so an accidental double-registration
+is caught; use `replaceResource` when swapping is intentional.
 
 ```dart
+// In the owning plugin:
 app.insertResource<InputState>(InputState());
+
+// For a widget-shared instance, insert it once through the game:
+final input = InputState();
+final game = Game(scene: scene)
+  ..addPlugin(const PlayerPlugin())
+  ..insertResource<InputState>(input); // throws if PlayerPlugin already added it
 ```
 
 Game code that needs direct world access can use safe helpers:
@@ -460,9 +483,16 @@ reads.
 On start, it:
 
 - exposes the real `Scene` and `SceneCommands` as resources;
-- mounts entity-bound `SceneNodeRef` nodes into the scene;
+- mounts entity-bound `SceneNodeRef` nodes into the scene **before** the `update`
+  phase (and once at startup), so a gameplay system never needs a
+  `node.parent == null` guard — a queried node is already in the scene;
 - syncs optional `SceneTransform` components onto bound nodes;
+- exposes a `SceneNodeIndex` resource — the node → entity reverse lookup;
 - attaches one internal scene driver and exposes `game.onTick` for `SceneView`.
+
+A mounted entity also gains an integration-managed `Mounted` tag (removed on
+unmount/despawn) for the rare system that wants to filter on scene-mounted
+entities; bundles never author it.
 
 ### Direct Node Path: Mutate Nodes Yourself
 
@@ -561,6 +591,88 @@ final class AddDecorationSystem extends GameSystem {
   }
 }
 ```
+
+## Using flutter_scene Features (No Bridge Needed)
+
+Scene-Dash deliberately does **not** wrap `flutter_scene`. New engine features
+become usable through two access points it already gives you, so there is no
+bridge layer to keep in sync with each `flutter_scene` release:
+
+- **Scene-wide features → `@Resource() Scene`.** A startup system mutates the
+  live scene directly.
+- **Per-entity features → the `Node` your `@Bundle` builds.** Add components and
+  configure materials on that node like any `flutter_scene` app.
+
+| flutter_scene feature | Reach it via |
+| --- | --- |
+| `antiAliasingMode` (FXAA/auto), `renderScale`, `filterQuality` | `@Resource() Scene` |
+| `ambientOcclusion`, `skybox`, `skyEnvironment`, `postProcess` | `@Resource() Scene` |
+| Offscreen render targets (`scene.views`, `RenderTexture`) | `@Resource() Scene` |
+| `Scene.raycast` / `ScenePointer` visual picking | `@Resource() Scene` + `SceneNodeIndex` |
+| `WidgetComponent` (live in-world widget) + auto input | bundle `Node` component |
+| `RenderTexture` in a material slot (monitor/mirror) | bundle `Node` material |
+| `InstancedMesh`, `UnlitMaterial.alphaMode`, `Node.raycastable` | bundle `Node` |
+| GLB models (`Node.fromGlbAsset`, `loadScene`) | startup load → resource → bundles |
+
+### Scene-wide settings from a startup system
+
+```dart
+@System()
+void setupScene(@Resource() Scene scene) {
+  scene
+    ..antiAliasingMode = AntiAliasingMode.auto // MSAA where supported, else FXAA
+    ..renderScale = 1.0                          // <1.0 faster, >1.0 supersamples
+    ..skybox = Skybox(GradientSkySource());
+  scene.ambientOcclusion
+    ..enabled = true
+    ..intensity = 1.1;
+}
+```
+
+### Picking: `SceneNodeIndex` (node → entity)
+
+`SceneNodeRef` is entity → node. `Scene.raycast` and `ScenePointer` return a
+`Node`, so to act on the entity you hit, inject the `SceneNodeIndex` resource the
+integration maintains. `entityOf` walks up ancestors, so a hit on a child mesh
+still resolves to the bound entity.
+
+```dart
+@System()
+void pick(
+  @Resource() Scene scene,
+  @Resource() SceneNodeIndex nodes,
+  @Resource() PickRequest request, // your own resource holding a ray to test
+) {
+  final hit = scene.raycast(request.ray);
+  if (hit == null) return;
+  final entity = nodes.entityOf(hit.node);
+  if (entity != null) {
+    // act on the entity (read components, queue commands, ...)
+  }
+}
+```
+
+### Hardware instancing: many visuals, one draw call
+
+For many identical visuals (foliage, debris, particles), an `InstancedMesh`
+(one node, one draw call) beats one entity/node each. A startup system builds it
+on the scene; an update system animates the instances **allocation-free** by
+reusing a single scratch matrix (`setInstanceTransform` copies it in):
+
+```dart
+@System()
+void animateMotes(@Resource() MoteField field, @Resource() FrameTime time) {
+  final mesh = field.mesh;
+  final scratch = field.scratch; // one Matrix4, reused every instance & frame
+  for (var i = 0; i < field.count; i++) {
+    scratch.setTranslationRaw(field.x[i], field.bob(i, time.delta), field.z[i]);
+    mesh.setInstanceTransform(i, scratch);
+  }
+}
+```
+
+See [`examples/scene_game/lib/decor/decor.dart`](examples/scene_game/lib/decor/decor.dart)
+for the full feature.
 
 ## Physics and Collisions
 
@@ -719,11 +831,14 @@ adapters while the runtime stays explicit and reflection-free.
 That gives much of Bevy's authoring ergonomics without pretending Dart has
 Rust's monomorphization or memory model.
 
-System classes do not use generated mixins. The generator emits a top-level
-descriptor, such as `movePlayerSystem`, and game code passes that descriptor to
-`app.addSystem(...)`. Bundles still mix in their generated insert adapter, and
-plugins only need a generated mixin when they declare `@GamePlugin(requires:
-[...])`.
+Systems use no generated mixin: a `@System` is a plain class (`extends
+GameSystem`) or a top-level function, and the generator emits a top-level
+descriptor such as `movePlayerSystem` that game code passes to
+`app.addSystem(...)`. Identity is `SystemRef(libraryUri, name)`, so ordering by
+descriptor (`after: [readInputSystem]`) turns a rename into a compile error
+rather than a broken string. Bundles still mix in their generated insert adapter,
+and plugins only need a generated mixin when they declare
+`@GamePlugin(requires: [...])`.
 
 ### Cache Everything Stable
 

@@ -56,11 +56,3 @@ final class ProjectileBundle with _$ProjectileBundle {
       );
   }
 }
-
-@Bundle()
-final class ImpactVfxBundle with _$ImpactVfxBundle {
-  ImpactVfxBundle(this.node, this.effect);
-
-  final SceneNodeRef node;
-  final VfxEffect effect;
-}
