@@ -197,10 +197,8 @@ part 'game.g.dart';
 
 ### 1. Plugins — one feature, one plugin
 
-A **plugin** is the entry point for a feature: it registers that feature's
-systems, resources, and events, and declares which schedule each system runs in.
-Read a plugin top-to-bottom and you see the whole feature at a glance. Plugins can
-require other plugins.
+A feature is a plugin: it registers the feature's systems (and its events and
+resources) and picks each system's schedule. `requires:` pulls in dependencies.
 
 ```dart
 @GamePlugin(requires: [InputPlugin])
@@ -217,19 +215,11 @@ final class PlayerPlugin extends Plugin with _$PlayerPlugin {
 }
 ```
 
-A plugin also registers events (`app.addEvent<EnemyKilled>()`, §5) and resources
-(`app.insertResource<SaveRepo>(...)`, §6) for its feature.
+Events and resources register the same way, inside `build` (§5, §6). Schedules run
+in frame order: `frameStart`, `fixedPrePhysics` (`FixedTime`), `update`
+(`FrameTime`), `renderSync`, plus once-only `startup`/`shutdown`.
 
-Built-in schedules, in frame order: `frameStart`, `fixedPrePhysics` (each fixed
-step, before the physics step — use `FixedTime`), `update` (every frame — use
-`FrameTime`), `renderSync` (transform sync), plus `startup` and `shutdown` which
-run once. A system reads the clock that matches its schedule — `FixedTime` in
-`fixedPrePhysics`, `FrameTime` in `update`. Access-conflict diagnostics can warn
-or error when unordered systems both write the same component, or one writes what
-another reads.
-
-`main` builds the `Scene` and `Game` and adds every plugin — the top of the whole
-program (condensed from the `scene_game` example):
+`main` wires the scene, game, and plugins:
 
 ```dart
 Future<void> main() async {
@@ -247,29 +237,21 @@ Future<void> main() async {
 }
 ```
 
-`SceneView(scene, cameraBuilder: ..., onTick: game.onTick)` renders it. Call
-`game.shutdown()` when the widget is disposed (it runs the `shutdown` schedule and
-detaches the driver — important for hot restart and navigation).
+Render with `SceneView(scene, onTick: game.onTick)`; call `game.shutdown()` on
+dispose to run the shutdown schedule and detach the driver.
 
 ### 2. Systems — your behaviour
 
-A `@System` is what a plugin registers: it reads resources and **queries**, then
-mutates components. It comes in two forms that generate the same kind of
-descriptor (`spawnPlayer` → `spawnPlayerSystem`).
-
-A **top-level function** — the most concise form, no class or constructor:
+A system reads resources and queries, then mutates components. Two forms, same
+generated descriptor (`spawnPlayer` → `spawnPlayerSystem`):
 
 ```dart
-@System()
+@System() // top-level function: the concise form
 void spawnPlayer(Commands commands) {
-  commands.spawn(PlayerBundle()); // bundle defined in §4
+  commands.spawn(PlayerBundle()); // §4
 }
-```
 
-A **class** that `extends GameSystem` — when a system needs its own fields/state:
-
-```dart
-@System()
+@System() // class form: when the system needs its own state
 final class MovePlayerSystem extends GameSystem {
   const MovePlayerSystem();
 
@@ -282,10 +264,8 @@ final class MovePlayerSystem extends GameSystem {
 }
 ```
 
-**Queries** select entities that have a set of components and hand your callback
-the components directly. Declare `writes:` for components you mutate so the
-scheduler can detect conflicts; `requires:`/`excludes:` filter without appearing
-in the callback:
+A `@Query` hands you the matched components directly. `writes:` flags what you
+mutate; `requires:`/`excludes:` filter without appearing in the callback:
 
 ```dart
 @System()
@@ -302,14 +282,9 @@ void applyVelocity(
 }
 ```
 
-For an entity that should be **unique** (the player, a camera rig), inject a
-`Single<A>` instead of looping — it resolves the one match and throws on zero or
-many. `OptionalSingle<A>` allows zero (`.valueOrNull`) but still rejects many;
-`Query1..4` also expose `single()`, `singleOrNull()`, and `isEmpty`.
-
-**Structural changes** (spawn, despawn, add/remove component) go through
-`Commands` and are **deferred** to a safe schedule boundary, so removal never
-invalidates a running query:
+`Single<A>` resolves a unique entity (throws on zero/many); `OptionalSingle<A>`
+allows zero. Spawn/despawn and add/remove go through `Commands`, deferred to a
+safe boundary so removal never invalidates a running query:
 
 ```dart
 @System()
@@ -328,13 +303,10 @@ void spawnEnemy(Commands commands) {
 
 ### 3. Tags and components — the data systems query
 
-Those queries filter and mutate two kinds of data.
-
-`@Tag()` is a marker with **no per-entity payload** — it answers "is this entity
-a …?" (player/enemy/team/state markers used in `requires:`/`excludes:`):
+Systems query two kinds of data:
 
 ```dart
-@Tag()
+@Tag() // marker, no data — used in requires:/excludes:
 final class Player {
   const Player();
 }
@@ -343,14 +315,8 @@ final class Player {
 final class Enemy {
   const Enemy();
 }
-```
 
-`@ObjectComponent()` is the normal component: each entity stores a reference to an
-ordinary Dart object, and systems mutate it in place — no snapshots, proxies, or
-reconstruction:
-
-```dart
-@ObjectComponent()
+@ObjectComponent() // a normal object, mutated in place by systems
 final class Health {
   double current;
   final double max;
@@ -365,65 +331,47 @@ final class Velocity {
 }
 ```
 
-Rule of thumb: if it stores values, it's an `@ObjectComponent`; if it only
-classifies, it's a `@Tag`.
-
 ### 4. Bundles — spawn recipes (tags included)
 
-`@Bundle()` is a typed spawn recipe: mix in `_$YourBundle` and one
-`commands.spawn(bundle)` inserts **every field** as a component.
-
-A bundle mixes data components and tags freely. A `@Tag` has no payload, so you
-include it as a **`const`-constructed field** — the generator inserts it as a
-component exactly like the data fields:
+A `@Bundle` is a spawn recipe: `commands.spawn(bundle)` inserts every field as a
+component. A tag has no data, so it's a `const` field — inserted like any other:
 
 ```dart
 @Bundle()
 final class PlayerBundle with _$PlayerBundle {
-  // Tag: const-constructed, no data. Inserted as a component like any field.
-  final Player player = const Player();
-
-  // Data components.
-  final Health health = Health(100);
+  final Player player = const Player();       // tag — const field
+  final Health health = Health(100);          // data
   final Velocity velocity = Velocity(0, 0);
-
-  // A flutter_scene node bound to this entity (see the integration section).
-  final SceneNodeRef node = SceneNodeRef(Node(mesh: _mesh));
+  final SceneNodeRef node = SceneNodeRef(Node(mesh: _mesh)); // flutter_scene node
 
   static final Mesh _mesh = Mesh(SphereGeometry(radius: 0.5), UnlitMaterial());
 }
 ```
 
-That one bundle spawns an entity **tagged** `Player` that **carries** `Health`,
-`Velocity`, and a `SceneNodeRef`. When a field needs constructor arguments, give
-the bundle a factory — see
-[`PlayerBundle`](examples/scene_game/lib/player/bundles.dart) and
-[`RockBundle`](examples/scene_game/lib/rocks/bundles.dart) for the real pattern.
+Need constructor args on a field? Use a factory — see
+[`PlayerBundle`](examples/scene_game/lib/player/bundles.dart) /
+[`RockBundle`](examples/scene_game/lib/rocks/bundles.dart).
 
 ### 5. Events — decoupled messages
 
-Events let one feature announce something that **several unrelated features**
-react to, without depending on each other. They are typed channels with
-independent reader cursors — one system sends, many read, none steal from the
-others. Register ownership in the owning plugin with `app.addEvent<EnemyKilled>()`
-(§1).
+Events decouple a producer from readers in other features — one sends, many read
+independently. (One producer and one consumer in the same feature? Just call the
+method.)
 
 ```dart
 final class Score {
   int value = 0;
 }
 
-/// Announced once when an enemy dies. It carries a *snapshot* of what readers
-/// need, because the entity is despawned the same frame — readers must never
-/// look the dead entity back up.
+// Carries a snapshot: the entity is despawned the same frame, so readers must
+// not look it back up.
 final class EnemyKilled {
   final Vector3 position;
   final int bounty;
   const EnemyKilled(this.position, this.bounty);
 }
 
-// The combat feature owns death: despawn the enemy and announce it once.
-@System()
+@System() // combat owns death: despawn + announce once
 void resolveEnemyDeaths(
   @Query(requires: [Enemy]) Query2<Health, SceneTransform> enemies,
   Commands commands,
@@ -432,29 +380,21 @@ void resolveEnemyDeaths(
   enemies.each((entity, health, transform) {
     if (health.current > 0) return;
     killed.send(EnemyKilled(transform.translation.clone(), 10));
-    commands.despawn(entity); // deferred; the enemy leaves the query next frame
+    commands.despawn(entity);
   });
 }
 
-// A *different* feature reacts, with no reference to the combat code. Scoring,
-// VFX, and audio each read the same event independently.
-@System()
+@System() // a different feature reacts — no reference to combat
 void awardBounty(EventReader<EnemyKilled> killed, @Resource() Score score) {
   killed.forEach((event) => score.value += event.bounty);
 }
 ```
 
-**Why an event and not a direct call?** Because combat shouldn't know about
-scoring, particles, or sound. It announces *an enemy died here* once; each
-feature decides what to do. A direct call would couple combat to every reactor —
-exactly what events avoid. (For a single producer and a single consumer in the
-same feature, skip the event and just call the code.)
+Register the channel in the owning plugin: `app.addEvent<EnemyKilled>()`.
 
 ### 6. Resources — shared state (and a save repo)
 
-Resources are singleton objects stored in the world: input, score, config, the
-physics world, a database handle. Systems resolve them once and receive the same
-instance every run.
+Resources are world singletons — input, score, config, a DB handle:
 
 ```dart
 final class InputState {
@@ -464,31 +404,17 @@ final class InputState {
 
 @System()
 void readInput(@Resource() InputState input) {
-  if (input.firePressed) {
-    // ...
-  }
+  if (input.firePressed) { /* ... */ }
 }
 ```
 
-Each resource is owned by one place — the plugin that uses it, or a single
-insertion through the `Game` for a dependency the Flutter widget also holds.
-`insertResource` **fails loud** on a duplicate; use `replaceResource` to swap
-intentionally. Game code can also reach the world directly with safe helpers:
+Own a resource in its plugin (`insertResource`, which throws on a duplicate), or
+insert it through the `Game` when something else builds it first. Direct world
+access: `world.has<T>()`, `world.get<T>()`, `world.tryResource<T>()`.
 
-```dart
-// In the owning plugin:
-app.insertResource<InputState>(InputState());
-
-if (world.has<Health>(entity)) {
-  world.get<Health>(entity).current -= 10;
-}
-final maybeInput = world.tryResource<InputState>();
-```
-
-**A save repo is just a resource.** Wrap your storage (SQLite, Hive, …) in a
-resource that owns all disk access, inject it, and have systems call its methods.
-Give persisted entities a stable id component — entity indices are **not** stable
-across a reload, so cross-references must use your own id, not the raw index:
+A save repo is just a resource that owns disk access. Persisted entities carry a
+stable id (entity indices aren't stable across reloads); saves run on a checkpoint,
+never per frame, since writes block:
 
 ```dart
 @ObjectComponent()
@@ -501,13 +427,10 @@ final class SaveSignal {
   bool requested = false; // flipped by your save button or on a scene/mode change
 }
 
-/// The single owner of disk access, inserted as a resource.
 final class SaveRepo {
   SaveRepo(this._db);
   final Database _db;
 
-  /// Persist rows in one batched transaction. Called on an explicit save /
-  /// checkpoint — never every frame, since SQLite writes block.
   void saveTransforms(List<(int id, SceneTransform transform)> rows) {
     _db.transaction((txn) {
       for (final (id, t) in rows) {
@@ -527,20 +450,37 @@ void saveGame(
   @Resource() SaveRepo repo,
   @Resource() SaveSignal save,
 ) {
-  if (!save.requested) return; // only on an explicit save / mode change
+  if (!save.requested) return;
   save.requested = false;
 
   final rows = <(int, SceneTransform)>[];
   entities.each((entity, persisted, t) => rows.add((persisted.id, t)));
-  repo.saveTransforms(rows); // one list alloc on a checkpoint is fine — not per frame
+  repo.saveTransforms(rows);
 }
 ```
 
-The repo is constructed once (with an open `Database`) and inserted through the
-`Game` like any widget-shared resource. Saving on a checkpoint — an explicit save
-or a scene/mode change — keeps the per-frame path free of blocking I/O. (If your
-DB package is async, return the `Future` and `await` it off the frame loop; a
-checkpoint can afford to.)
+`SaveSignal` is plugin-owned; `SaveRepo` needs an awaited `Database`, so it's built
+in `main` and inserted through the `Game`:
+
+```dart
+@GamePlugin()
+final class SavePlugin extends Plugin {
+  const SavePlugin();
+
+  @override
+  void build(AppBuilder app) {
+    app
+      ..insertResource<SaveSignal>(SaveSignal())              // owned by this plugin
+      ..addSystem(saveGameSystem, schedule: Schedules.update);
+  }
+}
+
+// main():
+final db = await openDatabase('save.db');
+final game = Game(scene: scene)
+  ..insertResource<SaveRepo>(SaveRepo(db))
+  ..addPlugin(const SavePlugin());
+```
 
 ## Rendering: the `flutter_scene` integration
 
