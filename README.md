@@ -1,10 +1,5 @@
 # Scene-Dash
 
-## Early prerelease
-
-Scene-Dash is under active development. APIs may change between development
-releases. It is published for experimentation, examples, and design feedback.
-
 Scene-Dash is a Bevy-inspired game framework built on
 [`flutter_scene`](https://pub.dev/packages/flutter_scene). It uses an
 object-based ECS designed for Dart: components are ordinary mutable objects,
