@@ -53,6 +53,71 @@ void main() {
       expect(slow.drain().map((e) => e.id), <int>[1]);
     });
 
+    test('a stalled reader is skipped past the retention window', () {
+      final channel = EventChannel<Pinged>(); // retainedUpdates: 2
+      final stalled = channel.reader();
+
+      channel.send(const Pinged(1));
+      channel.update(); // pass 1: event stays readable (frame N + 1)
+      expect(stalled.hasUnread, isTrue);
+
+      channel.update(); // pass 2: retention window exceeded, event expires
+      expect(stalled.hasUnread, isFalse);
+      expect(stalled.drain(), isEmpty);
+
+      // The channel keeps working normally afterwards.
+      channel.send(const Pinged(2));
+      expect(stalled.drain().map((e) => e.id), <int>[2]);
+    });
+
+    test('a stalled reader cannot grow the buffer without bound', () {
+      final channel = EventChannel<Pinged>();
+      final active = channel.reader();
+      channel.reader(); // stalled: never drains
+
+      for (var frame = 0; frame < 100; frame++) {
+        channel.send(Pinged(frame));
+        expect(active.drain(), hasLength(1));
+        channel.update();
+      }
+      // Only events inside the retention window can still be buffered.
+      channel.send(const Pinged(100));
+      expect(active.drain(), hasLength(1));
+    });
+
+    test('update reports how many unread events a lagging reader lost', () {
+      final channel = EventChannel<Pinged>();
+      channel.reader(); // never drains
+
+      channel.send(const Pinged(1));
+      channel.send(const Pinged(2));
+      expect(channel.update(), 0, reason: 'still within the window');
+      expect(channel.update(), 2, reason: 'both events expired unread');
+      expect(channel.update(), 0, reason: 'nothing new to lose');
+    });
+
+    test('null retainedUpdates keeps events until every reader consumed them',
+        () {
+      final channel = EventChannel<Pinged>(retainedUpdates: null);
+      final slow = channel.reader();
+
+      channel.send(const Pinged(1));
+      channel.update();
+      channel.update();
+      channel.update();
+
+      expect(slow.drain().map((e) => e.id), <int>[1]);
+    });
+
+    test('retainedUpdates of 1 expires unread events every pass', () {
+      final channel = EventChannel<Pinged>(retainedUpdates: 1);
+      final reader = channel.reader();
+
+      channel.send(const Pinged(1));
+      channel.update();
+      expect(reader.hasUnread, isFalse);
+    });
+
     test('writer sends to readers', () {
       final channel = EventChannel<Pinged>();
       final reader = channel.reader();
@@ -106,6 +171,27 @@ void main() {
     test('throws for an unregistered event type', () {
       final world = World();
       expect(world.eventChannel<Pinged>, throwsStateError);
+    });
+
+    test('app reports a lagging reader through onDiagnostic, once per type',
+        () {
+      final messages = <String>[];
+      final app = App(onDiagnostic: messages.add)..addEvent<Pinged>();
+      app.start();
+      app.world.eventChannel<Pinged>().reader(); // never drains
+
+      app.world.eventChannel<Pinged>().send(const Pinged(1));
+      app.updateEvents();
+      expect(messages, isEmpty, reason: 'still within the window');
+
+      app.updateEvents();
+      expect(messages, hasLength(1));
+      expect(messages.single, contains('Pinged'));
+
+      app.world.eventChannel<Pinged>().send(const Pinged(2));
+      app.updateEvents();
+      app.updateEvents();
+      expect(messages, hasLength(1), reason: 'reported once per event type');
     });
   });
 }

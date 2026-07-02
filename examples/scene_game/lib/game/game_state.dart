@@ -2,9 +2,14 @@
 library;
 
 import 'package:flutter/foundation.dart';
+import 'package:scene_dash/scene_dash.dart';
 
 /// Whether the run is ongoing or finished.
 enum GameStatus { playing, lost }
+
+/// Run condition for gameplay systems: true while the run is ongoing.
+bool playing(World world) =>
+    world.resource<GameState>().status == GameStatus.playing;
 
 /// Player input. Widgets write it; systems read it.
 final class InputState {

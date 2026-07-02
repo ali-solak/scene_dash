@@ -19,11 +19,9 @@ void movePlayer(
   @Query(requires: [Player], writes: [SceneNodeRef])
   Single<SceneNodeRef> player,
   @Resource() InputState input,
-  @Resource() GameState game,
   @Resource() FixedTime time,
   @Resource() PlayerKnockback knockback,
 ) {
-  if (game.status != GameStatus.playing) return;
   // The integration mounts the player under the RapierWorld before the first
   // step, so the node is already in the scene here. Resolve the Single once
   // (`.value` re-runs the query each access) and reach the native controller
@@ -36,13 +34,16 @@ void movePlayer(
   final dt = time.delta;
   _snapToRamp(node, knockback);
 
-  final position = node.localTransform.getTranslation();
+  // Read the translation straight out of the column-major matrix storage
+  // (elements 12..14) instead of getTranslation(), which allocates.
+  final m = node.localTransform.storage;
+  final positionY = m[13];
   final motion = knockback.step(dt)
     ..x += input.horizontal * playerStrafeSpeed * dt;
-  final nextX = position.x + motion.x;
-  final nextZ = position.z + motion.z;
+  final nextX = m[12] + motion.x;
+  final nextZ = m[14] + motion.z;
   if (isOverRampFootprint(nextX, nextZ)) {
-    motion.y = playerGroundYAtZ(nextZ) - position.y;
+    motion.y = playerGroundYAtZ(nextZ) - positionY;
     knockback.ground();
   } else {
     motion.y += knockback.fallStep(dt);
@@ -51,10 +52,12 @@ void movePlayer(
 }
 
 void _snapToRamp(Node node, PlayerKnockback knockback) {
-  final position = node.localTransform.getTranslation();
-  if (!isOverRampFootprint(position.x, position.z)) return;
-  position.y = playerGroundYAtZ(position.z);
-  node.localTransform = Matrix4.translation(position);
+  final transform = node.localTransform;
+  final m = transform.storage;
+  if (!isOverRampFootprint(m[12], m[14])) return;
+  m[13] = playerGroundYAtZ(m[14]);
+  // Reassign to trip the transform dirty flag after the in-place edit.
+  node.localTransform = transform;
   knockback.ground();
 }
 
@@ -66,12 +69,10 @@ void animateCrabLegs(
   @Query(requires: [Player], writes: [PlayerVisuals])
   Single<PlayerVisuals> visuals,
   @Resource() InputState input,
-  @Resource() GameState game,
   @Resource() FrameTime time,
 ) {
   final v = visuals.value;
   final dt = time.delta;
-  if (game.status != GameStatus.playing) return;
 
   v.legExtension01 = _approach01(
     v.legExtension01,

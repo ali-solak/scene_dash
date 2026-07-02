@@ -44,6 +44,7 @@ export 'src/schedule/schedules.dart';
 export 'src/schedule/system_descriptor.dart';
 export 'src/schedule/system_label.dart';
 export 'src/schedule/system_ref.dart';
+export 'src/schedule/system_registration.dart' show RunCondition;
 export 'src/storage/component_store.dart';
 export 'src/storage/object_store.dart';
 export 'src/storage/store_registry.dart';

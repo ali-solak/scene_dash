@@ -40,9 +40,17 @@ final class CollectablesPlugin extends Plugin {
       ..insertResource<ShieldDeflectVfx>(ShieldDeflectVfx())
       // Spawn in fixedPrePhysics so the body is mounted before the native step,
       // under the existing command-boundary lifecycle.
-      ..addSystem(spawnShieldPickupsSystem, schedule: Schedules.fixedPrePhysics)
+      ..addSystem(
+        spawnShieldPickupsSystem,
+        schedule: Schedules.fixedPrePhysics,
+        runIf: playing,
+      )
       ..addSystem(spawnShieldDeflectVfxSystem, schedule: Schedules.startup)
-      ..addSystem(updateShieldStateSystem, schedule: Schedules.update)
+      ..addSystem(
+        updateShieldStateSystem,
+        schedule: Schedules.update,
+        runIf: playing,
+      )
       ..addSystem(animateShieldPickupsSystem, schedule: Schedules.update)
       // Collection activates the shield; order it after the shield tick so a
       // freshly collected shield is not immediately ticked down this frame.
@@ -50,6 +58,7 @@ final class CollectablesPlugin extends Plugin {
         collectShieldPickupsSystem,
         schedule: Schedules.update,
         after: [updateShieldStateSystem],
+        runIf: playing,
       )
       ..addSystem(
         updateShieldVisualsSystem,

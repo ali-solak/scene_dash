@@ -60,9 +60,11 @@ final class Game {
     onFrameEnd: sceneCommands.flush,
   );
 
-  /// Mounts newly bound nodes and flushes them, so a gameplay `update` system
-  /// sees already-parented (and `Mounted`-tagged) nodes. Runs before the
-  /// `update` schedule each frame, and once at startup.
+  /// Mounts newly bound nodes and flushes them. Runs at every command boundary
+  /// (after `frameStart`, after each fixed step, and after `update`) plus once
+  /// at startup, so nodes spawned by any schedule are parented (and
+  /// `Mounted`-tagged) before the next schedule runs — in particular, gameplay
+  /// `update` systems always see already-mounted nodes.
   void _mountStep() {
     _mountAdapter.run();
     sceneCommands.flush();

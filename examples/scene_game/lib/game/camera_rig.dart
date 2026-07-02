@@ -14,25 +14,27 @@ final class CameraRig {
   }
 
   void follow(Vector3 playerPosition, double dt) {
-    final desiredTarget = Vector3(
+    final alpha = math.min(1.0, dt * cameraFollowSharpness);
+    _lerpInto(
+      target,
       playerPosition.x * 0.55,
       playerPosition.y + 0.7,
       playerPosition.z - 2.8,
+      alpha,
     );
-    final desiredPosition = Vector3(
+    _lerpInto(
+      position,
       playerPosition.x * 0.65,
       playerPosition.y + 10,
       playerPosition.z + 18,
+      alpha,
     );
-    final alpha = math.min(1.0, dt * cameraFollowSharpness);
-    _lerpInto(target, desiredTarget, alpha);
-    _lerpInto(position, desiredPosition, alpha);
   }
 
-  void _lerpInto(Vector3 value, Vector3 target, double alpha) {
+  void _lerpInto(Vector3 value, double x, double y, double z, double alpha) {
     value
-      ..x += (target.x - value.x) * alpha
-      ..y += (target.y - value.y) * alpha
-      ..z += (target.z - value.z) * alpha;
+      ..x += (x - value.x) * alpha
+      ..y += (y - value.y) * alpha
+      ..z += (z - value.z) * alpha;
   }
 }

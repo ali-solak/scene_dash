@@ -9,10 +9,9 @@ part of 'collectables.dart';
 class $SpawnShieldPickupsAdapter
     implements SystemAdapter, SystemAccessProvider {
   late final OptionalSingle<SceneNodeRef> _p0;
-  late final GameState _p1;
-  late final CollectableSpawner _p2;
-  late final FixedTime _p3;
-  late final Commands _p4;
+  late final CollectableSpawner _p1;
+  late final FixedTime _p2;
+  late final Commands _p3;
 
   @override
   void initialize(World world) {
@@ -24,10 +23,9 @@ class $SpawnShieldPickupsAdapter
         withoutTypes: const <Type>[],
       ),
     );
-    _p1 = world.resources.get<GameState>();
-    _p2 = world.resources.get<CollectableSpawner>();
-    _p3 = world.resources.get<FixedTime>();
-    _p4 = world.commands;
+    _p1 = world.resources.get<CollectableSpawner>();
+    _p2 = world.resources.get<FixedTime>();
+    _p3 = world.commands;
   }
 
   @override
@@ -36,7 +34,7 @@ class $SpawnShieldPickupsAdapter
 
   @override
   void run() {
-    spawnShieldPickups(_p0, _p1, _p2, _p3, _p4);
+    spawnShieldPickups(_p0, _p1, _p2, _p3);
   }
 }
 
@@ -51,15 +49,13 @@ final spawnShieldPickupsSystem = SystemDescriptor(
 );
 
 class $UpdateShieldStateAdapter implements SystemAdapter, SystemAccessProvider {
-  late final GameState _p0;
-  late final ShieldState _p1;
-  late final FrameTime _p2;
+  late final ShieldState _p0;
+  late final FrameTime _p1;
 
   @override
   void initialize(World world) {
-    _p0 = world.resources.get<GameState>();
-    _p1 = world.resources.get<ShieldState>();
-    _p2 = world.resources.get<FrameTime>();
+    _p0 = world.resources.get<ShieldState>();
+    _p1 = world.resources.get<FrameTime>();
   }
 
   @override
@@ -68,7 +64,7 @@ class $UpdateShieldStateAdapter implements SystemAdapter, SystemAccessProvider {
 
   @override
   void run() {
-    updateShieldState(_p0, _p1, _p2);
+    updateShieldState(_p0, _p1);
   }
 }
 
@@ -125,9 +121,8 @@ class $CollectShieldPickupsAdapter
     implements SystemAdapter, SystemAccessProvider {
   late final Single<SceneNodeRef> _p0;
   late final Query1<SceneNodeRef> _p1;
-  late final GameState _p2;
-  late final ShieldState _p3;
-  late final Commands _p4;
+  late final ShieldState _p2;
+  late final Commands _p3;
 
   @override
   void initialize(World world) {
@@ -144,9 +139,8 @@ class $CollectShieldPickupsAdapter
       withTypes: const <Type>[ShieldPickup],
       withoutTypes: const <Type>[],
     );
-    _p2 = world.resources.get<GameState>();
-    _p3 = world.resources.get<ShieldState>();
-    _p4 = world.commands;
+    _p2 = world.resources.get<ShieldState>();
+    _p3 = world.commands;
   }
 
   @override
@@ -155,7 +149,7 @@ class $CollectShieldPickupsAdapter
 
   @override
   void run() {
-    collectShieldPickups(_p0, _p1, _p2, _p3, _p4);
+    collectShieldPickups(_p0, _p1, _p2, _p3);
   }
 }
 

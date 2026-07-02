@@ -33,7 +33,20 @@ final class World {
   /// structural changes here; the app flushes it after each schedule.
   late final Commands commands = Commands(this);
 
-  final Map<Type, Object> _eventChannels = <Type, Object>{};
+  final Map<Type, EventChannelMaintenance> _eventChannels =
+      <Type, EventChannelMaintenance>{};
+
+  // Parallel registration-order views of _eventChannels, so updateEvents can
+  // iterate without allocating map entries each frame.
+  final List<Type> _eventTypes = <Type>[];
+  final List<EventChannelMaintenance> _eventChannelList =
+      <EventChannelMaintenance>[];
+
+  /// Called by [updateEvents] when a channel expired events past a lagging
+  /// reader (see [EventChannel.retainedUpdates]): the event type and the
+  /// largest number of unread events one reader lost this pass. Set by the
+  /// app to surface a diagnostic.
+  void Function(Type eventType, int skippedEvents)? onEventReaderSkip;
 
   /// Number of queries currently iterating. Used by debug guards to detect
   /// structural mutation during active iteration.
@@ -49,8 +62,16 @@ final class World {
   TagStore ensureTagStore<T>() => stores.ensureTag<T>();
 
   /// Registers an event channel for event type [T] if one does not yet exist.
-  void registerEvent<T>() {
-    _eventChannels.putIfAbsent(T, EventChannel<T>.new);
+  ///
+  /// [retainedUpdates] bounds how many maintenance passes an unread event
+  /// survives (see [EventChannel.retainedUpdates]); `null` retains events until
+  /// every reader has consumed them. Ignored if the channel already exists.
+  void registerEvent<T>({int? retainedUpdates = 2}) {
+    if (_eventChannels.containsKey(T)) return;
+    final channel = EventChannel<T>(retainedUpdates: retainedUpdates);
+    _eventChannels[T] = channel;
+    _eventTypes.add(T);
+    _eventChannelList.add(channel);
   }
 
   /// The event channel for event type [T]. Throws if it was never registered.
@@ -64,10 +85,13 @@ final class World {
     return channel as EventChannel<T>;
   }
 
-  /// Advances every event channel, reclaiming fully-consumed events.
+  /// Advances every event channel, reclaiming fully-consumed events and
+  /// reporting readers that lost events to the retention window through
+  /// [onEventReaderSkip].
   void updateEvents() {
-    for (final channel in _eventChannels.values) {
-      (channel as dynamic).update();
+    for (var i = 0; i < _eventChannelList.length; i++) {
+      final skipped = _eventChannelList[i].update();
+      if (skipped > 0) onEventReaderSkip?.call(_eventTypes[i], skipped);
     }
   }
 
@@ -112,32 +136,42 @@ final class World {
   bool hasResource<T extends Object>() => resources.contains<T>();
 
   /// Inserts or replaces component [component] (of type [T]) on [entity].
-  void insertNow<T>(Entity entity, T component) {
+  void insertNow<T>(Entity entity, T component) =>
+      insertNowByType(T, entity, component);
+
+  /// Non-generic variant of [insertNow], keyed by a runtime [componentType].
+  ///
+  /// Used by the deferred command buffer, which records the component type per
+  /// command instead of capturing it in a closure.
+  void insertNowByType(Type componentType, Entity entity, Object? component) {
     assert(
       _activeQueries == 0,
       'Structural mutation (insert) while a query is iterating.',
     );
     assert(
       entities.isAlive(entity),
-      'Cannot insert $T on stale entity $entity.',
+      'Cannot insert $componentType on stale entity $entity.',
     );
     if (!entities.isAlive(entity)) return;
-    stores.require(T).insertDynamic(entity.index, component);
+    stores.require(componentType).insertDynamic(entity.index, component);
   }
 
   /// Removes the component of type [T] from [entity], if present.
-  void removeNow<T>(Entity entity) {
+  void removeNow<T>(Entity entity) => removeNowByType(T, entity);
+
+  /// Non-generic variant of [removeNow], keyed by a runtime [componentType].
+  void removeNowByType(Type componentType, Entity entity) {
     assert(
       _activeQueries == 0,
       'Structural mutation (remove) while a query is iterating.',
     );
     assert(
       entities.isAlive(entity),
-      'Cannot remove $T from stale entity $entity.',
+      'Cannot remove $componentType from stale entity $entity.',
     );
     if (!entities.isAlive(entity)) return;
-    if (stores.isRegistered(T)) {
-      stores.require(T).removeEntityIndex(entity.index);
+    if (stores.isRegistered(componentType)) {
+      stores.require(componentType).removeEntityIndex(entity.index);
     }
   }
 

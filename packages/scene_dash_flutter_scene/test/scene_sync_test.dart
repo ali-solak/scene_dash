@@ -161,6 +161,66 @@ void main() {
     );
   });
 
+  test('sync skips nodes whose transform did not change', () {
+    final world = World()
+      ..stores.register<TestTransform>(ObjectComponentStore<TestTransform>())
+      ..stores.register<SceneNodeRef>(ObjectComponentStore<SceneNodeRef>());
+
+    final movingNode = Node();
+    final staticNode = Node();
+    final moving = world.entities.spawn();
+    final static_ = world.entities.spawn();
+    final movingTransform = TestTransform(1, 2, 3);
+    world
+      ..insertNow<TestTransform>(moving, movingTransform)
+      ..insertNow<SceneNodeRef>(moving, SceneNodeRef(movingNode))
+      ..insertNow<TestTransform>(static_, TestTransform(4, 5, 6))
+      ..insertNow<SceneNodeRef>(static_, SceneNodeRef(staticNode));
+
+    final adapter = SyncSceneNodesAdapter<TestTransform>(
+      (t) => (t.x, t.y, t.z),
+    )..initialize(world);
+
+    adapter.run();
+    expect(adapter.lastRunWrites, 2, reason: 'first run writes both nodes');
+
+    adapter.run();
+    expect(adapter.lastRunWrites, 0, reason: 'nothing moved: nothing written');
+
+    movingTransform.x = 10;
+    adapter.run();
+    expect(adapter.lastRunWrites, 1, reason: 'only the moved node is written');
+    expect(
+      movingNode.localTransform.getTranslation().x,
+      closeTo(10, 1e-9),
+    );
+  });
+
+  test('translation-only sync preserves the node\'s rotation and scale', () {
+    final world = World()
+      ..stores.register<TestTransform>(ObjectComponentStore<TestTransform>())
+      ..stores.register<SceneNodeRef>(ObjectComponentStore<SceneNodeRef>());
+
+    final original = Matrix4.zero()
+      ..setFromTranslationRotationScale(
+        Vector3.zero(),
+        Quaternion.axisAngle(Vector3(0, 1, 0), 0.5),
+        Vector3(2, 2, 2),
+      );
+    final node = Node(localTransform: original.clone());
+    final e = world.entities.spawn();
+    world
+      ..insertNow<TestTransform>(e, TestTransform(1, 2, 3))
+      ..insertNow<SceneNodeRef>(e, SceneNodeRef(node));
+
+    SyncSceneNodesAdapter<TestTransform>((t) => (t.x, t.y, t.z))
+      ..initialize(world)
+      ..run();
+
+    final expected = original.clone()..setTranslationRaw(1, 2, 3);
+    _expectMatrixClose(node.localTransform, expected);
+  });
+
   test('standard SceneTransform sync writes full TRS onto the bound node', () {
     // This is the adapter Game installs automatically for SceneTransform.
     final world = World()

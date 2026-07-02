@@ -6,12 +6,10 @@ part of '../collectables.dart';
 @System()
 void spawnShieldPickups(
   @Query(requires: [ShieldPickup]) OptionalSingle<SceneNodeRef> activePickup,
-  @Resource() GameState game,
   @Resource() CollectableSpawner spawner,
   @Resource() FixedTime time,
   Commands commands,
 ) {
-  if (game.status != GameStatus.playing) return;
   if (activePickup.isPresent) return; // keep at most one pickup
   if (!spawner.tick(time.delta)) return;
   commands.spawn(ShieldPickupBundle(x: spawner.nextLane()));
@@ -20,11 +18,9 @@ void spawnShieldPickups(
 /// Update: count the active shield down while the run is going.
 @System()
 void updateShieldState(
-  @Resource() GameState game,
   @Resource() ShieldState shield,
   @Resource() FrameTime time,
 ) {
-  if (game.status != GameStatus.playing) return;
   shield.tick(time.delta);
 }
 
@@ -62,11 +58,9 @@ void animateShieldPickups(
 void collectShieldPickups(
   @Query(requires: [Player]) Single<SceneNodeRef> player,
   @Query(requires: [ShieldPickup]) Query1<SceneNodeRef> pickups,
-  @Resource() GameState game,
   @Resource() ShieldState shield,
   Commands commands,
 ) {
-  if (game.status != GameStatus.playing) return;
   final p = player.value.node.globalTransform.getTranslation();
   pickups.each((entity, binding) {
     final c = binding.node.globalTransform.getTranslation();

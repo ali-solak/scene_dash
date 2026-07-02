@@ -92,6 +92,14 @@ final class DemoPlugin extends Plugin {
   }
 }
 
+final class ConfiguredPlugin extends Plugin {
+  final int config;
+  ConfiguredPlugin(this.config);
+
+  @override
+  void build(AppBuilder app) {}
+}
+
 final class NeedsDemoPlugin extends Plugin {
   const NeedsDemoPlugin();
 
@@ -150,15 +158,22 @@ void main() {
       expect(satisfied.start, returnsNormally);
     });
 
-    test('adding the same plugin twice is a no-op', () {
+    test('re-adding the same plugin instance is a no-op', () {
       final app = _appWithStores()
         ..addPlugin(const DemoPlugin())
-        ..addPlugin(const DemoPlugin());
+        ..addPlugin(const DemoPlugin()); // const-canonicalized: same instance
       // Only one spawn system registered → only one player after startup.
       app.start();
       var count = 0;
       app.world.query1<Position>().each((e, p) => count++);
       expect(count, 1);
+    });
+
+    test('adding a different instance of the same plugin type throws', () {
+      final app = _appWithStores()..addPlugin(ConfiguredPlugin(1));
+      // A second, differently-configured instance would be silently discarded
+      // if it were treated as a duplicate no-op — fail loudly instead.
+      expect(() => app.addPlugin(ConfiguredPlugin(2)), throwsStateError);
     });
   });
 }

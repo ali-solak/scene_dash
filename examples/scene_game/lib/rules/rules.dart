@@ -36,6 +36,7 @@ final class RulesPlugin extends Plugin {
         evaluateGameRulesSystem,
         schedule: Schedules.update,
         after: [collectShieldPickupsSystem, updateShieldStateSystem],
+        runIf: playing,
       )
       // Keep camera follow after rule evaluation so the view observes the latest
       // player state. Referencing the descriptor means a rename is a compile

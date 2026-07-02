@@ -120,6 +120,58 @@ void main() {
       expect(() => app.addCleanup(() {}), throwsStateError);
     });
 
+    test('runIf skips a system while false and is re-evaluated every run', () {
+      final log = <String>[];
+      final app = App()
+        ..insertResource<_Gate>(_Gate())
+        ..addSystemAdapter(
+          RecordingAdapter('gated', log),
+          schedule: Schedules.update,
+          label: const SystemLabel('gated'),
+          runIf: (world) => world.resource<_Gate>().open,
+        )
+        ..addSystemAdapter(
+          RecordingAdapter('always', log),
+          schedule: Schedules.update,
+          label: const SystemLabel('always'),
+        );
+      app.start();
+
+      app.runSchedule(Schedules.update);
+      expect(log, <String>['always'], reason: 'gate closed: system skipped');
+
+      app.world.resource<_Gate>().open = true;
+      app.runSchedule(Schedules.update);
+      expect(log, <String>['always', 'gated', 'always']);
+
+      app.world.resource<_Gate>().open = false;
+      app.runSchedule(Schedules.update);
+      expect(log, <String>['always', 'gated', 'always', 'always']);
+    });
+
+    test('runIf works through addSystem descriptors and with the profiler',
+        () {
+      final log = <String>[];
+      final app = App(
+        diagnostics: const AppDiagnostics(profileSystems: true),
+      )
+        ..addSystemAdapter(
+          RecordingAdapter('never', log),
+          schedule: Schedules.update,
+          label: const SystemLabel('never'),
+          runIf: (world) => false,
+        );
+      app.start();
+      app.runSchedule(Schedules.update);
+
+      expect(log, isEmpty);
+      expect(
+        app.profiler!.timingOf(const SystemLabel('never'), Schedules.update),
+        isNull,
+        reason: 'a skipped system is not timed',
+      );
+    });
+
     test('shutdown runs schedule then async cleanups once in reverse order',
         () async {
       final log = <String>[];
@@ -151,4 +203,8 @@ final class _EmptyPlugin extends Plugin {
 
   @override
   void build(AppBuilder app) {}
+}
+
+final class _Gate {
+  bool open = false;
 }

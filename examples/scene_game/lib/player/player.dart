@@ -28,7 +28,15 @@ final class PlayerPlugin extends Plugin {
     app
       ..insertResource<PlayerKnockback>(PlayerKnockback())
       ..addSystem(spawnPlayerSystem, schedule: Schedules.startup)
-      ..addSystem(movePlayerSystem, schedule: Schedules.fixedPrePhysics)
-      ..addSystem(animateCrabLegsSystem, schedule: Schedules.update);
+      ..addSystem(
+        movePlayerSystem,
+        schedule: Schedules.fixedPrePhysics,
+        runIf: playing,
+      )
+      ..addSystem(
+        animateCrabLegsSystem,
+        schedule: Schedules.update,
+        runIf: playing,
+      );
   }
 }

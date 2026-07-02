@@ -1,59 +1,17 @@
 # Scene-Dash
 
-Scene-Dash is a Bevy-inspired game framework built on
-[`flutter_scene`](https://pub.dev/packages/flutter_scene). It uses an
-object-based ECS designed for Dart: components are ordinary mutable objects,
-queries return direct references, and generated adapters handle system and
-bundle wiring without runtime reflection.
+Scene-Dash is a Bevy-inspired game framework built on top of
+[`flutter_scene`](https://pub.dev/packages/flutter_scene). It gives your game
+logic a structure that scales: components are plain Dart objects, systems are
+plain functions, and `build_runner` generates the wiring.
 
-Scene-Dash **complements** `flutter_scene`; it does not replace its scene graph,
-renderer, cameras, nodes, physics world, or frame loop. The integration lets ECS
-systems work directly with those native objects. The ECS core can also run
-independently of Flutter for headless tests and simulations.
+It does not replace `flutter_scene` — the scene graph, renderer, cameras and
+physics stay native. Scene-Dash adds the game structure around them. The core
+also runs without Flutter, so game logic is easy to test headless.
 
-The [`scene_game` example](examples/scene_game) is the most complete reference.
-Its [feature-oriented layout](examples/scene_game/lib) shows how a real game is
-split into focused areas — each folder is one plugin that owns its components,
-bundles, systems, and resources:
+## A complete game in one file
 
-```text
-lib/
-├── player/        # one feature = one plugin
-├── projectiles/
-├── rocks/
-├── collectables/
-├── world/
-├── hud/
-└── main.dart      # builds the Scene, the Game, and adds every plugin
-```
-
-## Table of Contents
-
-- [The shape of a Scene-Dash game](#the-shape-of-a-scene-dash-game)
-- [Quick Start](#quick-start)
-- [Building a game, top-down](#building-a-game-top-down)
-  - [1. Plugins — one feature, one plugin](#1-plugins--one-feature-one-plugin)
-  - [2. Systems — your behaviour](#2-systems--your-behaviour)
-  - [3. Tags and components — the data systems query](#3-tags-and-components--the-data-systems-query)
-  - [4. Bundles — spawn recipes (tags included)](#4-bundles--spawn-recipes-tags-included)
-  - [5. Events — decoupled messages](#5-events--decoupled-messages)
-  - [6. Resources — shared state (and a save repo)](#6-resources--shared-state-and-a-save-repo)
-- [Rendering: the `flutter_scene` integration](#rendering-the-flutter_scene-integration)
-- [Physics with Rapier](#physics-with-rapier)
-- [Packages and Examples](#packages-and-examples)
-- [Verification](#verification)
-
-## The shape of a Scene-Dash game
-
-Everything flows from the app downward:
-
-- create a `flutter_scene` `Scene`;
-- wrap it in a `Game`;
-- add **plugins** (one per feature);
-- each plugin registers **systems**;
-- systems **query** ordinary Dart objects and mutate the scene.
-
-Here is the whole loop in one runnable file — a single orbiting cube:
+One orbiting cube:
 
 ```dart
 import 'dart:math';
@@ -132,68 +90,47 @@ final class CubeBundle with _$CubeBundle {
 }
 ```
 
-`Game` drives the schedules from `SceneView`. Startup spawns one entity carrying
-a `SceneTransform`, an `Orbit`, and a `SceneNodeRef`; the integration mounts the
-node and syncs the transform to `flutter_scene` every frame.
-
-The annotations (`@System`, `@Bundle`, …) are turned into wiring code by
-`build_runner`:
+Generate the wiring for the annotations:
 
 ```bash
 dart run build_runner build
 ```
 
-The same ECS core runs **without Flutter** for headless tests and simulations —
-swap `Game`/`SceneView` for a bare `App`:
+The generator turns each `@System` function into a registrable descriptor named
+after it (`spawnCube` → `spawnCubeSystem`) and creates the `_$CubeBundle` mixin
+— all in `main.g.dart`. So those names don't exist until the first build; use
+`dart run build_runner watch` while developing. Rule of thumb: a `@Bundle`
+always needs its `with _$Name` mixin; a `@GamePlugin` only needs one when it
+declares `requires:`.
 
-```dart
-final app = App()..addPlugin(const CubeOrbitPlugin());
-app.start();
-app.runSchedule(Schedules.update);
-```
+## Quick start
 
-## Quick Start
-
-This repository is a Dart pub workspace. Because the scene integration depends on
-Flutter and `flutter_scene`, resolve it from the root with Flutter:
+The repository is a pub workspace; resolve it from the root:
 
 ```bash
 flutter pub get
 ```
 
-Generated systems, plugin metadata, and bundles use `build_runner`:
-
-```bash
-cd examples/headless_example
-dart run build_runner build
-dart test
-```
-
-To run a Flutter scene example:
+Run the example game (`flutter_scene` needs Flutter GPU, which is only on the
+**master** channel: `flutter channel master`):
 
 ```bash
 cd examples/scene_game
+dart run build_runner build
 flutter run --enable-flutter-gpu
 ```
 
-## Building a game, top-down
+## The building blocks
 
-A Scene-Dash game is a set of features, and **each feature is a plugin**. This
-tour goes top-down: start with the plugin that defines a feature, drill into the
-systems it registers, then the data those systems touch, and finish with how
-features talk to each other and persist. The running example is a player that
-strafes and takes damage. Every generated source file starts the same way:
+A game is a set of features. Each feature is a **plugin** that registers
+**systems**; systems query **components** and talk to each other through
+**events** and **resources**.
 
-```dart
-import 'package:scene_dash/scene_dash.dart';
+### Plugins
 
-part 'game.g.dart';
-```
-
-### 1. Plugins — one feature, one plugin
-
-A feature is a plugin: it registers the feature's systems (and its events and
-resources) and picks each system's schedule. `requires:` pulls in dependencies.
+A plugin registers a feature's systems and picks their schedules. Schedules run
+in frame order: `frameStart`, `fixedPrePhysics`, `update`, `renderSync`, plus
+once-only `startup` and `shutdown`.
 
 ```dart
 @GamePlugin(requires: [InputPlugin])
@@ -203,64 +140,29 @@ final class PlayerPlugin extends Plugin with _$PlayerPlugin {
   @override
   void build(AppBuilder app) {
     app
-      ..addSystem(spawnPlayerSystem, schedule: Schedules.startup)            // §2
-      ..addSystem(movePlayerSystem, schedule: Schedules.fixedPrePhysics)     // sets velocity
-      ..addSystem(applyVelocitySystem, schedule: Schedules.fixedPrePhysics); // integrates it
+      ..addSystem(spawnPlayerSystem, schedule: Schedules.startup)
+      ..addSystem(movePlayerSystem, schedule: Schedules.fixedPrePhysics);
   }
 }
 ```
 
-Events and resources register the same way, inside `build` (§5, §6). Schedules run
-in frame order: `frameStart`, `fixedPrePhysics` (`FixedTime`), `update`
-(`FrameTime`), `renderSync`, plus once-only `startup`/`shutdown`.
-
-`main` wires the scene, game, and plugins:
+`main` wires the scene, game and plugins, then hands the scene to `SceneView`:
 
 ```dart
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await Scene.initializeStaticResources();
+final scene = Scene();
+final game = Game(scene: scene)
+  ..addPlugin(const InputPlugin())
+  ..addPlugin(const PlayerPlugin());
+await game.start();
 
-  final scene = Scene();
-  final game = Game(scene: scene)
-    ..addPlugin(const InputPlugin())
-    ..addPlugin(const PlayerPlugin())
-    ..addPlugin(const EnemyPlugin());
-  await game.start();
-
-  runApp(MyGameApp(scene: scene, game: game));
-}
+runApp(MyGameApp(scene: scene, game: game));
 ```
 
-Render with `SceneView(scene, onTick: game.onTick)`; call `game.shutdown()` on
-dispose to run the shutdown schedule and detach the driver.
+### Systems
 
-### 2. Systems — your behaviour
-
-A system reads resources and queries, then mutates components. Two forms, same
-generated descriptor (`spawnPlayer` → `spawnPlayerSystem`):
-
-```dart
-@System() // top-level function: the concise form
-void spawnPlayer(Commands commands) {
-  commands.spawn(PlayerBundle()); // §4
-}
-
-@System() // class form: when the system needs its own state
-final class MovePlayerSystem extends GameSystem {
-  const MovePlayerSystem();
-
-  void run(
-    @Query(requires: [Player], writes: [Velocity]) Single<Velocity> player,
-    @Resource() InputState input,
-  ) {
-    player.value.x = input.horizontal * 5.0;
-  }
-}
-```
-
-A `@Query` hands you the matched components directly. `writes:` flags what you
-mutate; `requires:`/`excludes:` filter without appearing in the callback:
+A system is a function (or a class, if it needs state) whose parameters declare
+what it uses. `@Query` hands you matching components directly; `@Resource`
+injects shared state.
 
 ```dart
 @System()
@@ -277,9 +179,14 @@ void applyVelocity(
 }
 ```
 
-`Single<A>` resolves a unique entity (throws on zero/many); `OptionalSingle<A>`
-allows zero. Spawn/despawn and add/remove go through `Commands`, deferred to a
-safe boundary so removal never invalidates a running query:
+The `writes:` list declares which components the system mutates. It changes
+nothing at runtime — the scheduler uses it to warn when two unordered systems
+touch the same data.
+
+`Single<A>` resolves a unique entity like the player; `OptionalSingle<A>`
+allows zero. Resolving re-runs the query, so grab `.value` once per system,
+not inside a loop. Spawning and despawning go through `Commands`, which defers
+the change to a safe point so it never breaks a running query:
 
 ```dart
 @System()
@@ -289,84 +196,67 @@ void spawnEnemy(Commands commands) {
       .entity(enemy)
       .insert(const Enemy())
       .insert(Health(30))
-      .insert(Velocity(0, -2))      // drifts forward; applyVelocity integrates it
-      .insert(SceneTransform.zero());
-  // commands.remove<Stunned>(enemy);
-  // commands.despawn(enemy);        // also deferred to the next safe boundary
+      .insert(Velocity(0, -2));
 }
 ```
 
-### 3. Tags and components — the data systems query
+### Run conditions
 
-Systems query two kinds of data:
+Instead of starting every system with `if (game.status != playing) return;`,
+declare when it runs. The condition is checked every pass, and the system is
+skipped while it returns false:
 
 ```dart
-@Tag() // marker, no data — used in requires:/excludes:
-final class Player {
-  const Player();
-}
+bool playing(World world) =>
+    world.resource<GameState>().status == GameStatus.playing;
 
-@Tag()
-final class Enemy {
-  const Enemy();
-}
+app.addSystem(movePlayerSystem, schedule: Schedules.fixedPrePhysics, runIf: playing);
+```
 
-@ObjectComponent() // a normal object, mutated in place by systems
+### Components and tags
+
+Components hold data and are mutated in place. Tags are empty markers used to
+filter queries.
+
+```dart
+@ObjectComponent()
 final class Health {
   double current;
   final double max;
   Health(this.max) : current = max;
 }
 
-@ObjectComponent()
-final class Velocity {
-  double x;
-  double z;
-  Velocity(this.x, this.z);
+@Tag()
+final class Enemy {
+  const Enemy();
 }
 ```
 
-### 4. Bundles — spawn recipes (tags included)
+### Bundles
 
-A `@Bundle` is a spawn recipe: `commands.spawn(bundle)` inserts every field as a
-component. A tag has no data, so it's a `const` field — inserted like any other:
+A bundle is a spawn recipe: `commands.spawn(bundle)` inserts every field as a
+component.
 
 ```dart
 @Bundle()
 final class PlayerBundle with _$PlayerBundle {
-  final Player player = const Player();       // tag — const field
-  final Health health = Health(100);          // data
+  final Player player = const Player();
+  final Health health = Health(100);
   final Velocity velocity = Velocity(0, 0);
-  final SceneNodeRef node = SceneNodeRef(Node(mesh: _mesh)); // flutter_scene node
+  final SceneNodeRef node = SceneNodeRef(Node(mesh: _mesh));
 
   static final Mesh _mesh = Mesh(SphereGeometry(radius: 0.5), UnlitMaterial());
 }
 ```
 
-Need constructor args on a field? Use a factory — see
-[`PlayerBundle`](examples/scene_game/lib/player/bundles.dart) /
-[`RockBundle`](examples/scene_game/lib/rocks/bundles.dart).
+### Events
 
-### 5. Events — decoupled messages
-
-Events decouple a producer from readers in other features — one sends, many read
-independently. (One producer and one consumer in the same feature? Just call the
-method.)
+Events let one feature announce something and others react without knowing
+each other. Register the channel in the owning plugin with
+`app.addEvent<EnemyKilled>()`.
 
 ```dart
-final class Score {
-  int value = 0;
-}
-
-// Carries a snapshot: the entity is despawned the same frame, so readers must
-// not look it back up.
-final class EnemyKilled {
-  final Vector3 position;
-  final int bounty;
-  const EnemyKilled(this.position, this.bounty);
-}
-
-@System() // combat owns death: despawn + announce once
+@System()
 void resolveEnemyDeaths(
   @Query(requires: [Enemy]) Query2<Health, SceneTransform> enemies,
   Commands commands,
@@ -379,280 +269,138 @@ void resolveEnemyDeaths(
   });
 }
 
-@System() // a different feature reacts — no reference to combat
+@System()
 void awardBounty(EventReader<EnemyKilled> killed, @Resource() Score score) {
   killed.forEach((event) => score.value += event.bounty);
 }
 ```
 
-Register the channel in the owning plugin: `app.addEvent<EnemyKilled>()`.
+An event stays readable for the frame it was sent plus the next one, so a
+system that reads every frame never misses anything. A reader that skips
+frames (paused, or gated by `runIf`) misses the older events instead of piling
+them up — a diagnostic reports it once if that happens. Pass
+`retainedUpdates: null` to `addEvent` to keep events until every reader has
+consumed them.
 
-### 6. Resources — shared state (and a save repo)
+### Resources
 
-Resources are world singletons — input, score, config, a DB handle:
+Resources are world singletons: input, score, config, a database handle.
 
 ```dart
-final class InputState {
-  double horizontal = 0;
-  bool firePressed = false;
+final class Score {
+  int value = 0;
 }
 
 @System()
-void readInput(@Resource() InputState input) {
-  if (input.firePressed) { /* ... */ }
+void showScore(@Resource() Score score) {
+  // ...
 }
 ```
 
-Own a resource in its plugin (`insertResource`, which throws on a duplicate), or
-insert it through the `Game` when something else builds it first. Direct world
-access: `world.has<T>()`, `world.get<T>()`, `world.tryResource<T>()`.
-
-A save repo is just a resource that owns disk access. Persisted entities carry a
-stable id (entity indices aren't stable across reloads); saves run on a checkpoint,
-never per frame, since writes block:
+A plugin owns its resources (`app.insertResource`). Something built in `main`,
+like a database, is inserted through the game instead:
 
 ```dart
-@ObjectComponent()
-final class Persisted {
-  final int id; // stable across saves; remap entity refs through this, not the index
-  const Persisted(this.id);
-}
-
-final class SaveSignal {
-  bool requested = false; // flipped by your save button or on a scene/mode change
-}
-
-final class SaveRepo {
-  SaveRepo(this._db);
-  final Database _db;
-
-  void saveTransforms(List<(int id, SceneTransform transform)> rows) {
-    _db.transaction((txn) {
-      for (final (id, t) in rows) {
-        txn.insert(
-          'transforms',
-          {'id': id, 'x': t.x, 'y': t.y, 'z': t.z},
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
-      }
-    });
-  }
-}
-
-@System()
-void saveGame(
-  @Query() Query2<Persisted, SceneTransform> entities,
-  @Resource() SaveRepo repo,
-  @Resource() SaveSignal save,
-) {
-  if (!save.requested) return;
-  save.requested = false;
-
-  final rows = <(int, SceneTransform)>[];
-  entities.each((entity, persisted, t) => rows.add((persisted.id, t)));
-  repo.saveTransforms(rows);
-}
-```
-
-`SaveSignal` is plugin-owned; `SaveRepo` needs an awaited `Database`, so it's built
-in `main` and inserted through the `Game`:
-
-```dart
-@GamePlugin()
-final class SavePlugin extends Plugin {
-  const SavePlugin();
-
-  @override
-  void build(AppBuilder app) {
-    app
-      ..insertResource<SaveSignal>(SaveSignal())              // owned by this plugin
-      ..addSystem(saveGameSystem, schedule: Schedules.update);
-  }
-}
-
-// main():
-final db = await openDatabase('save.db');
 final game = Game(scene: scene)
   ..insertResource<SaveRepo>(SaveRepo(db))
   ..addPlugin(const SavePlugin());
 ```
 
-## Rendering: the `flutter_scene` integration
+## Rendering
 
-`scene_dash_flutter_scene` wraps the pure-Dart `App` in a scene-aware `Game` that:
+Your game data lives in the world as plain objects in flat arrays; everything
+you see is a real, unwrapped `flutter_scene` `Node`. A `SceneNodeRef`
+component is the only bridge between the two — so any native feature is one
+`node.addComponent(...)` away. The full reasoning is in
+[architecture and rationale](docs/concept.md).
 
-- exposes the live `Scene` and `SceneCommands` as `@Resource()`s;
-- **mounts** entity-bound `SceneNodeRef` nodes into the scene before `update`, so a
-  queried node is already parented (no `parent == null` guards);
-- **syncs** the optional `SceneTransform` component onto bound nodes each frame;
-- exposes a `SceneNodeIndex` resource (node → entity) for **picking**.
+`Game` wraps the pure-Dart `App` and connects it to `flutter_scene`:
 
-You choose where transform authority lives:
+- the live `Scene` and `SceneCommands` are available as resources;
+- entity-bound `SceneNodeRef` nodes are mounted into the scene automatically;
+- a `SceneTransform` component is synced onto the bound node every frame;
+- `SceneNodeIndex` maps a hit node back to its entity for picking.
 
-- **ECS-owned** — add a `SceneTransform`; the integration writes it onto the node.
-  Best for serialization, save files, networking, headless simulation.
-- **Node-owned** — store only a `SceneNodeRef` and mutate the native node directly.
-  Best for visual-only state `flutter_scene` already holds. Add `PhysicsDriven` so
-  generic transform sync skips entities a physics body (or another authority) owns.
+An entity's transform can live in the ECS (add a `SceneTransform`) or on the
+node itself (store only a `SceneNodeRef` and mutate the node). Add the
+`PhysicsDriven` tag when a physics body owns the transform.
 
-> **Access-metadata rule:** mutating an object reached *through* a component (a
-> `Node` or a physics body behind `SceneNodeRef`) counts as **writing** that
-> component. Declare `writes: [SceneNodeRef]` whenever a system changes the
-> referenced node.
+Details, including scene commands and picking, are in the
+[integration guide](docs/integration.md).
 
-Picking resolves a hit `Node` back to its entity:
+## Physics
 
-```dart
-@System()
-void pick(
-  @Resource() Scene scene,
-  @Resource() SceneNodeIndex nodes,
-  @Resource() PickRequest request, // your resource holding a ray to test
-) {
-  final hit = scene.raycast(request.ray);
-  if (hit == null) return;
-  final entity = nodes.entityOf(hit.node); // walks up to the bound ancestor
-  if (entity != null) {
-    // act on the entity
-  }
-}
-```
-
-See the **[integration guide](docs/integration.md)** for node mounting, transform
-authority, scene commands, reaching native `flutter_scene` features, and hardware
-instancing.
-
-## Physics with Rapier
-
-Scene-Dash does **not** implement physics. You attach a native `flutter_scene`
-physics world (here `flutter_scene_rapier`) to the scene graph, then bridge that
-same world into the ECS with `PhysicsPlugin`. The plugin inserts the world as a
-`@Resource() PhysicsWorld` and registers a `CollisionEvent` ECS event.
-
-**1. Create the world, attach it, add the plugin:**
+Scene-Dash has no physics of its own. Attach a native `flutter_scene` physics
+world (for example `flutter_scene_rapier`) to the scene, then bridge it into
+the ECS with `PhysicsPlugin`:
 
 ```dart
 final physics = RapierWorld(gravity: Vector3(0, -9.81, 0));
-final scene = Scene()..root.addComponent(physics); // physics lives on the scene graph
+final scene = Scene()..root.addComponent(physics);
 
 final game = Game(scene: scene)
-  ..addPlugin(PhysicsPlugin(physics)) // ...and is bridged into the ECS as @Resource() PhysicsWorld
+  ..addPlugin(PhysicsPlugin(physics))
   ..addPlugin(const PlayerPlugin());
 ```
 
-**2. Build bodies and colliders on the entity's node.** Physics objects live on
-the `flutter_scene` node; the entity stores a `SceneNodeRef`, plus `PhysicsDriven`
-when the physics body owns the transform:
-
-```dart
-@Bundle()
-final class RockBundle with _$RockBundle {
-  final Rock rock = const Rock();        // a @Tag
-  final PhysicsDriven physics = const PhysicsDriven(); // physics owns the transform
-  final SceneNodeRef node;
-
-  RockBundle({required double x})
-      : node = SceneNodeRef(
-          Node(
-            mesh: Mesh(SphereGeometry(radius: 0.5), UnlitMaterial()),
-            localTransform: Matrix4.translation(Vector3(x, 10, 0)),
-          )
-            ..addComponent(RapierRigidBody(type: BodyType.dynamic_))
-            ..addComponent(
-              RapierCollider(
-                shape: SphereShape(radius: 0.5),
-                collisionLayer: PhysicsLayers.rock,
-              ),
-            ),
-        );
-}
-```
-
-**3. Query the `PhysicsWorld` resource** for immediate scene queries — raycasts,
-overlap checks, ground probes. This `fixedPrePhysics` system steers the player
-through its native character controller, probing the ground to decide whether to
-fall. It reaches the controller through the `SceneNodeRef`, so it declares
-`writes: [SceneNodeRef]`:
+Systems query the world directly as a resource:
 
 ```dart
 @System()
-void movePlayerBody(
-  @Query(requires: [Player], writes: [SceneNodeRef]) Single<SceneNodeRef> player,
-  @Resource() InputState input,
-  @Resource() FixedTime time,
-  @Resource() PhysicsWorld physics,
-) {
-  final ref = player.value;
-  final controller = ref.component<RapierKinematicCharacterController>();
-  if (controller == null) return;
-
-  // Probe straight down: is there ground within reach?
-  final origin = ref.node.globalTransform.getTranslation();
-  final grounded = physics.raycast(
-        Ray.originDirection(origin, Vector3(0, -1, 0)),
-        maxDistance: 1.1,
-        layerMask: PhysicsLayers.world,
-      ) !=
-      null;
-
-  final dt = time.delta;
-  final motion = Vector3(input.horizontal * 4.0 * dt, 0, 0);
-  if (!grounded) motion.y = -9.81 * dt; // fall when nothing is underfoot
-  controller.move(motion);              // native move-and-slide
+void probeGround(@Resource() PhysicsWorld physics) {
+  final hit = physics.raycast(ray, maxDistance: 1.1);
+  // ...
 }
 ```
 
-**4. Read collisions as an ECS event.** The plugin drains the native collision
-stream at `frameStart` and republishes it as `CollisionEvent`:
+Collisions arrive as a regular ECS event:
 
 ```dart
 @System()
 void readCollisions(EventReader<CollisionEvent> collisions) {
   collisions.forEach((collision) {
-    // translate raw backend collision data into your own game events
+    // ...
   });
 }
 ```
 
-For larger games, treat raw collisions as a boundary: keep gameplay meaning
-(teams, hitboxes, damage) in your own components and events, and translate physics
-events into them. That keeps the backend swappable. The full physics walkthrough —
-`BasicPhysicsWorld` vs. a Rapier backend, layers/masks, triggers, and the event
-bridge — is in the **[integration guide](docs/integration.md#physics-and-collisions)**.
+The full walkthrough — bodies, colliders, layers, triggers, character
+controllers — is in the
+[integration guide](docs/integration.md#physics-and-collisions).
 
-## Packages and Examples
+## Packages and examples
 
 | Path | Purpose |
 | --- | --- |
-| [`packages/scene_dash`](packages/scene_dash) | Pure-Dart ECS runtime: annotations, commands, resources, events, schedules, queries. |
-| [`packages/scene_dash_generator`](packages/scene_dash_generator) | `source_gen` / `build_runner` adapters for systems, bundles, and plugin metadata. |
-| [`packages/scene_dash_flutter_scene`](packages/scene_dash_flutter_scene) | `Game`, `SceneNodeRef`, `SceneCommands`, `SceneTransform`, `PhysicsPlugin`, and the scene frame integration. |
-| [`examples/headless_example`](examples/headless_example) | Headless generated ECS example (no Flutter). |
-| [`examples/scene_game`](examples/scene_game) | Complete `flutter_scene` + Rapier game driven by Scene-Dash. |
-| [`benchmarks`](benchmarks) | Pure-Dart query and structural benchmarks. |
+| [`packages/scene_dash`](packages/scene_dash) | Pure-Dart ECS runtime. |
+| [`packages/scene_dash_generator`](packages/scene_dash_generator) | Code generation for the annotations. |
+| [`packages/scene_dash_flutter_scene`](packages/scene_dash_flutter_scene) | The `flutter_scene` integration: `Game`, node mounting, transform sync, physics bridge. |
+| [`examples/scene_game`](examples/scene_game) | Complete game: `flutter_scene` + Rapier, one plugin per feature. |
+| [`examples/headless_example`](examples/headless_example) | The ECS core running without Flutter. |
+| [`benchmarks`](benchmarks) | Query and structural benchmarks. |
 
-Deeper docs: the [architecture and rationale](docs/concept.md) and the
-[`flutter_scene` integration guide](docs/integration.md).
+The [`scene_game` example](examples/scene_game) is the best reference. Each
+folder is one feature with its own components, bundles, systems and resources:
 
-## Verification
+```text
+lib/
+├── player/
+├── projectiles/
+├── rocks/
+├── collectables/
+├── world/
+├── hud/
+└── main.dart
+```
 
-Useful checks while developing:
+Deeper docs: [architecture and rationale](docs/concept.md) and the
+[integration guide](docs/integration.md).
+
+## Development
 
 ```bash
 flutter pub get
-dart analyze packages/scene_dash
-flutter analyze packages/scene_dash_flutter_scene
+
+cd packages/scene_dash && dart test
+cd packages/scene_dash_flutter_scene && flutter test
 ```
-
-Package-specific tests:
-
-```bash
-cd packages/scene_dash
-dart test
-
-cd ../scene_dash_flutter_scene
-flutter test
-```
-
-The `flutter_scene` integration imports `package:flutter_scene/scene.dart` for the
-0.18.x API.

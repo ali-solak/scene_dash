@@ -11,7 +11,6 @@ final class SpawnRocksSystem extends GameSystem {
     @Resource() GameState game,
     @Resource() FixedTime time,
   ) {
-    if (game.status != GameStatus.playing) return;
     final due = spawner.tick(time.delta, survived: game.survived);
     for (var i = 0; i < due; i++) {
       final x = spawner.nextLane();

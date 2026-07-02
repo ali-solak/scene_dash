@@ -61,23 +61,32 @@ final class Schedule {
 
   /// Runs every system in compiled order. Must be compiled first.
   ///
-  /// When [profiler] is non-null, each system is timed with the profiler's reused
-  /// stopwatch and recorded under this schedule's label. The null-profiler path
-  /// is the unchanged tight loop, so profiling adds nothing when disabled.
-  void run([SystemProfiler? profiler]) {
+  /// A system with a `runIf` condition is skipped for this pass when the
+  /// condition returns `false`; [world] is what conditions read.
+  ///
+  /// When [profiler] is non-null, each system that runs is timed with the
+  /// profiler's reused stopwatch and recorded under this schedule's label. The
+  /// null-profiler path is the unchanged tight loop, so profiling adds nothing
+  /// when disabled.
+  void run(World world, [SystemProfiler? profiler]) {
     final compiled = _compiled;
     if (compiled == null) {
       throw StateError('Schedule "${label.id}" has not been compiled.');
     }
     if (profiler == null) {
       for (var i = 0; i < compiled.length; i++) {
-        compiled[i].adapter.run();
+        final registration = compiled[i];
+        final condition = registration.runIf;
+        if (condition != null && !condition(world)) continue;
+        registration.adapter.run();
       }
       return;
     }
     final stopwatch = profiler.stopwatch;
     for (var i = 0; i < compiled.length; i++) {
       final registration = compiled[i];
+      final condition = registration.runIf;
+      if (condition != null && !condition(world)) continue;
       stopwatch
         ..reset()
         ..start();

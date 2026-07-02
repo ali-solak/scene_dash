@@ -78,7 +78,7 @@ Future<void> _expectRejected(String source, String fragment) async {
 
 void main() {
   group('positive generation', () {
-    test('emits a system adapter and createAdapter mixin', () {
+    test('emits a system adapter and schedulable descriptor', () {
       return _expectGenerated(
         '''
 @System()
@@ -88,12 +88,10 @@ final class FooSystem {
 }
 ''',
         allOf(
-          contains('class _\$FooSystemAdapter implements SystemAdapter'),
+          contains('class \$FooSystemAdapter implements SystemAdapter'),
           contains('_p0 = world.commands;'),
-          contains('base mixin _\$FooSystem on GameSystem'),
-          contains(
-            'createAdapter() => _\$FooSystemAdapter(this as FooSystem)',
-          ),
+          contains('final fooSystem = SystemDescriptor('),
+          contains('() => \$FooSystemAdapter(const FooSystem())'),
         ),
       );
     });

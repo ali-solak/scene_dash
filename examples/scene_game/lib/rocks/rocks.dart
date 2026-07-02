@@ -29,7 +29,11 @@ final class RocksPlugin extends Plugin {
       ..insertResource<RockSpawner>(RockSpawner())
       ..insertResource<RockTrails>(RockTrails())
       ..addSystem(spawnRockTrailsSystem, schedule: Schedules.startup)
-      ..addSystem(spawnRocksSystem, schedule: Schedules.fixedPrePhysics)
+      ..addSystem(
+        spawnRocksSystem,
+        schedule: Schedules.fixedPrePhysics,
+        runIf: playing,
+      )
       ..addSystem(cleanupRocksSystem, schedule: Schedules.update)
       ..addSystem(updateRockHitReactionsSystem, schedule: Schedules.update)
       ..addSystem(updateRockTrailsSystem, schedule: Schedules.update);

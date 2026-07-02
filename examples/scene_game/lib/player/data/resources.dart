@@ -4,6 +4,7 @@ part of '../player.dart';
 /// the player feature decides how that contact becomes controller movement.
 final class PlayerKnockback {
   final Vector3 _velocity = Vector3.zero();
+  final Vector3 _displacement = Vector3.zero();
   double _fallVelocityY = 0;
 
   /// Adds a shove away from the rock, falling back to down-ramp when centres
@@ -12,27 +13,32 @@ final class PlayerKnockback {
     required Vector3 playerPosition,
     required Vector3 rockPosition,
   }) {
-    final direction = playerPosition - rockPosition;
-    direction.y = 0;
-    if (direction.length2 < 0.001) {
-      direction.setValues(0, 0, 1);
-    } else {
-      direction.normalize();
-    }
     _velocity
-      ..setFrom(direction)
-      ..scale(knockbackPushSpeed);
+      ..setFrom(playerPosition)
+      ..sub(rockPosition)
+      ..y = 0;
+    if (_velocity.length2 < 0.001) {
+      _velocity.setValues(0, 0, 1);
+    } else {
+      _velocity.normalize();
+    }
+    _velocity.scale(knockbackPushSpeed);
   }
 
   /// Returns this fixed step's horizontal displacement and damps the stored
   /// shove. Falling is handled separately once the player leaves the ramp.
+  ///
+  /// The returned vector is owned by this resource and rewritten by the next
+  /// [step] call; consume it within the same step.
   Vector3 step(double dt) {
     if (_velocity.length2 < 0.0001) {
       _velocity.setZero();
-      return Vector3.zero();
+      return _displacement..setZero();
     }
 
-    final displacement = _velocity * dt;
+    _displacement
+      ..setFrom(_velocity)
+      ..scale(dt);
     final speed = _velocity.length;
     final nextSpeed = (speed - knockbackDecayRate * dt).clamp(0.0, speed);
     if (nextSpeed == 0) {
@@ -40,7 +46,7 @@ final class PlayerKnockback {
     } else {
       _velocity.scale(nextSpeed / speed);
     }
-    return displacement;
+    return _displacement;
   }
 
   /// Returns this fixed step's falling displacement while off the ramp.

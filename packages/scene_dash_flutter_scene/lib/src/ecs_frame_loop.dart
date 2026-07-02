@@ -10,12 +10,17 @@ final class EcsFrameLoop {
   /// The engine this loop drives.
   final App app;
 
-  /// Called at the start of [update], before the `update` schedule — the point
-  /// where the integration mounts newly bound nodes and flushes them, so a
-  /// gameplay `update` system sees already-mounted nodes.
+  /// Optional hook called at the start of [update], before the `update`
+  /// schedule. [Game] does not use it — mounting happens at every command
+  /// boundary instead (see [onCommandBoundary]) — but custom drivers can hook
+  /// pre-update work here.
   final void Function()? onBeforeUpdate;
 
-  /// Called after a schedule has run and flushed ECS commands.
+  /// Called after a schedule has run and flushed ECS commands — after
+  /// [frameStart], after each [fixedStep], and after the `update` schedule.
+  /// [Game] mounts newly bound scene nodes here, so nodes spawned by any
+  /// schedule are parented by the time the next schedule runs (in particular,
+  /// gameplay `update` systems always see already-mounted nodes).
   final void Function()? onCommandBoundary;
 
   /// Called at the end of [update] (after `renderSync`, before the scene
@@ -62,9 +67,10 @@ final class EcsFrameLoop {
     onCommandBoundary?.call();
   }
 
-  /// Per-frame update: mount newly bound nodes ([onBeforeUpdate]) so gameplay
-  /// sees them, run [Schedules.update] then [Schedules.renderSync], then
-  /// [onFrameEnd] (e.g. flush scene-graph mutations) before render.
+  /// Per-frame update: [onBeforeUpdate], then [Schedules.update], then
+  /// [onCommandBoundary] (where [Game] mounts nodes spawned during `update`),
+  /// [Schedules.renderSync], and finally [onFrameEnd] (e.g. flush scene-graph
+  /// mutations) before render.
   void update(double deltaSeconds) {
     app.world.resources.get<FrameTime>().delta = deltaSeconds;
     onBeforeUpdate?.call();

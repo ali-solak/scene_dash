@@ -34,9 +34,8 @@ final spawnPlayerSystem = SystemDescriptor(
 class $MovePlayerAdapter implements SystemAdapter, SystemAccessProvider {
   late final Single<SceneNodeRef> _p0;
   late final InputState _p1;
-  late final GameState _p2;
-  late final FixedTime _p3;
-  late final PlayerKnockback _p4;
+  late final FixedTime _p2;
+  late final PlayerKnockback _p3;
 
   @override
   void initialize(World world) {
@@ -49,9 +48,8 @@ class $MovePlayerAdapter implements SystemAdapter, SystemAccessProvider {
       ),
     );
     _p1 = world.resources.get<InputState>();
-    _p2 = world.resources.get<GameState>();
-    _p3 = world.resources.get<FixedTime>();
-    _p4 = world.resources.get<PlayerKnockback>();
+    _p2 = world.resources.get<FixedTime>();
+    _p3 = world.resources.get<PlayerKnockback>();
   }
 
   @override
@@ -60,7 +58,7 @@ class $MovePlayerAdapter implements SystemAdapter, SystemAccessProvider {
 
   @override
   void run() {
-    movePlayer(_p0, _p1, _p2, _p3, _p4);
+    movePlayer(_p0, _p1, _p2, _p3);
   }
 }
 
@@ -74,8 +72,7 @@ final movePlayerSystem = SystemDescriptor(
 class $AnimateCrabLegsAdapter implements SystemAdapter, SystemAccessProvider {
   late final Single<PlayerVisuals> _p0;
   late final InputState _p1;
-  late final GameState _p2;
-  late final FrameTime _p3;
+  late final FrameTime _p2;
 
   @override
   void initialize(World world) {
@@ -88,8 +85,7 @@ class $AnimateCrabLegsAdapter implements SystemAdapter, SystemAccessProvider {
       ),
     );
     _p1 = world.resources.get<InputState>();
-    _p2 = world.resources.get<GameState>();
-    _p3 = world.resources.get<FrameTime>();
+    _p2 = world.resources.get<FrameTime>();
   }
 
   @override
@@ -98,7 +94,7 @@ class $AnimateCrabLegsAdapter implements SystemAdapter, SystemAccessProvider {
 
   @override
   void run() {
-    animateCrabLegs(_p0, _p1, _p2, _p3);
+    animateCrabLegs(_p0, _p1, _p2);
   }
 }
 

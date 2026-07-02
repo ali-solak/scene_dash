@@ -1,5 +1,13 @@
 part of '../rules.dart';
 
+// Per-frame scratch state, reused so rule evaluation and the camera follow
+// allocate nothing per frame. Systems run sequentially, so sharing is safe.
+final Vector3 _playerPos = Vector3.zero();
+final Vector3 _rockPos = Vector3.zero();
+
+/// Reusable downward ground probe; only its origin changes per frame.
+final Ray _groundRay = Ray.originDirection(Vector3.zero(), Vector3(0, -1, 0));
+
 /// Evaluates the lose condition and rock contacts each frame, as a top-level
 /// `@System`
 /// function with an injected `Single<SceneNodeRef>` player (generates an
@@ -18,18 +26,20 @@ void evaluateGameRules(
   @Resource() ShieldState shield,
   @Resource() ShieldDeflectVfx deflectVfx,
 ) {
-  if (game.status != GameStatus.playing) return;
-
   // The single player always exists (spawned at startup, never despawned) and
   // the integration mounts its node before update, so it is already in scene.
   final node = player.value.node;
-  final pos = node.globalTransform.getTranslation();
+  // globalTransform returns the node's cached matrix (no allocation); read the
+  // translation out of its column-major storage into the reused scratch.
+  final m = node.globalTransform.storage;
+  final pos = _playerPos..setValues(m[12], m[13], m[14]);
 
   game.addSurvival(time.delta);
 
   if (game.survived > startupGrace) {
+    _groundRay.origin.setFrom(pos);
     final ground = world.raycast(
-      Ray.originDirection(pos, Vector3(0, -1, 0)),
+      _groundRay,
       maxDistance: groundProbeDistance,
       includeFixed: true,
       includeKinematic: false,
@@ -63,7 +73,8 @@ void evaluateGameRules(
         collider.collisionLayer & PhysicsLayers.rock == 0) {
       continue;
     }
-    final rockPos = hit.node.globalTransform.getTranslation();
+    final rm = hit.node.globalTransform.storage;
+    final rockPos = _rockPos..setValues(rm[12], rm[13], rm[14]);
     if (shielded) {
       _deflectRock(hit.node, pos, rockPos, deflectVfx);
       shield.absorbHit();
@@ -120,9 +131,8 @@ final class PlayerViewSystem extends GameSystem {
     @Resource() CameraRig camera,
     @Resource() FrameTime time,
   ) {
-    final node = player.value.node;
-    final pos = node.globalTransform.getTranslation();
-    camera.follow(pos, time.delta);
+    final m = player.value.node.globalTransform.storage;
+    camera.follow(_playerPos..setValues(m[12], m[13], m[14]), time.delta);
   }
 }
 

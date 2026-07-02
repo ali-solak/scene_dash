@@ -1,5 +1,9 @@
 part of '../projectiles.dart';
 
+/// Per-frame scratch for the live projectile position, reused so the update
+/// loop allocates nothing per projectile.
+final Vector3 _projectilePosition = Vector3.zero();
+
 @System()
 final class ShootProjectilesSystem extends GameSystem {
   const ShootProjectilesSystem();
@@ -64,7 +68,11 @@ final class UpdateProjectilesSystem extends GameSystem {
     final dt = time.delta;
     projectiles.each((entity, projectile, binding) {
       projectile.age += dt;
-      final position = binding.node.globalTransform.getTranslation();
+      // globalTransform returns the node's cached matrix (no allocation); read
+      // the translation from its column-major storage into the reused scratch.
+      // _knockRocks consumes it before the next iteration overwrites it.
+      final m = binding.node.globalTransform.storage;
+      final position = _projectilePosition..setValues(m[12], m[13], m[14]);
 
       if (projectile.age >= projectileLifetime ||
           position.z < -rampLength * 0.5 - 2 ||

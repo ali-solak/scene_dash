@@ -3,6 +3,7 @@ import 'dart:async';
 import '../schedule/schedule_label.dart';
 import '../schedule/system_descriptor.dart';
 import '../schedule/system_label.dart';
+import '../schedule/system_registration.dart';
 import '../system/system_adapter.dart';
 import 'plugin.dart';
 
@@ -18,11 +19,15 @@ abstract interface class AppBuilder {
   /// [descriptor] is the generated `SystemDescriptor` for a `@System` class or
   /// function (e.g. `movePlayerSystem`); its identity and adapter come from the
   /// generator, so there is no hand-written label and no `with _$…` mixin.
+  ///
+  /// [runIf] gates each run: the condition is evaluated every schedule pass
+  /// and the system is skipped while it returns `false`.
   AppBuilder addSystem(
     SystemDescriptor descriptor, {
     required ScheduleLabel schedule,
     List<SystemDescriptor> after,
     List<SystemDescriptor> before,
+    RunCondition? runIf,
   });
 
   /// Registers a system [adapter] directly. Used by hand-written adapters
@@ -33,10 +38,17 @@ abstract interface class AppBuilder {
     required SystemLabel label,
     List<SystemLabel> after,
     List<SystemLabel> before,
+    RunCondition? runIf,
   });
 
   /// Declares an event channel for event type [T] (idempotent).
-  AppBuilder addEvent<T>();
+  ///
+  /// [retainedUpdates] bounds how many event-maintenance passes (normally one
+  /// per frame) an unread event survives, so a reader that stops draining
+  /// cannot grow the buffer without bound. The default of `2` keeps an event
+  /// readable for the frame it was sent plus the next one; pass `null` to
+  /// retain events until every reader has consumed them.
+  AppBuilder addEvent<T>({int? retainedUpdates});
 
   /// Inserts the resource instance for type [T].
   ///

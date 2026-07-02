@@ -26,7 +26,7 @@ final class App implements AppBuilder {
   final World world = World();
 
   final Map<ScheduleLabel, Schedule> _schedules = <ScheduleLabel, Schedule>{};
-  final Set<Type> _addedPlugins = <Type>{};
+  final Map<Type, Plugin> _addedPlugins = <Type, Plugin>{};
   final List<FutureOr<void> Function()> _cleanups =
       <FutureOr<void> Function()>[];
 
@@ -48,6 +48,9 @@ final class App implements AppBuilder {
   bool _finalized = false;
   bool _shutdown = false;
 
+  /// Event types whose reader-skip diagnostic has already been reported.
+  final Set<Type> _reportedEventSkips = <Type>{};
+
   /// Creates an app with the built-in schedules registered.
   App({
     this.accessConflictPolicy = AccessConflictPolicy.warn,
@@ -59,6 +62,23 @@ final class App implements AppBuilder {
     }
     final p = profiler;
     if (p != null) world.resources.insert<SystemProfiler>(p);
+    final sink = onDiagnostic;
+    if (sink != null) {
+      // Surface the one silent failure mode of bounded event retention: a
+      // reader that skips frames (paused, or gated by runIf) losing unread
+      // events. Reported once per event type so a stalled reader does not
+      // spam the sink every frame.
+      world.onEventReaderSkip = (type, skipped) {
+        if (!_reportedEventSkips.add(type)) return;
+        sink(
+          'An EventReader<$type> fell behind: $skipped unread event(s) '
+          'expired past the channel retention window. Readers that read '
+          'every frame never miss events; pass retainedUpdates: null to '
+          'addEvent<$type>() to keep events until every reader consumes '
+          'them. (Reported once per event type.)',
+        );
+      };
+    }
   }
 
   /// Builds the profiler from [diagnostics], routing slow-system warnings to the
@@ -89,16 +109,28 @@ final class App implements AppBuilder {
   AppBuilder addPlugin(Plugin plugin) {
     _assertOpen();
     final type = plugin.runtimeType;
-    if (_addedPlugins.contains(type)) return this;
+    final existing = _addedPlugins[type];
+    if (existing != null) {
+      // Re-adding the very same instance (e.g. the canonicalized const value)
+      // is an idempotent no-op. A *different* instance of the same type most
+      // likely carries different configuration, and silently dropping it would
+      // hide a real wiring bug — fail loudly instead.
+      if (identical(existing, plugin)) return this;
+      throw StateError(
+        'A $type has already been added. Adding a second, different instance '
+        'would be silently ignored along with its configuration; add each '
+        'plugin exactly once.',
+      );
+    }
     for (final dependency in plugin.dependencies) {
-      if (!_addedPlugins.contains(dependency)) {
+      if (!_addedPlugins.containsKey(dependency)) {
         throw StateError(
           'Plugin $type requires $dependency, which has not been added. '
           'Add $dependency before $type.',
         );
       }
     }
-    _addedPlugins.add(type);
+    _addedPlugins[type] = plugin;
     plugin.build(this);
     return this;
   }
@@ -109,6 +141,7 @@ final class App implements AppBuilder {
     required ScheduleLabel schedule,
     List<SystemDescriptor> after = const <SystemDescriptor>[],
     List<SystemDescriptor> before = const <SystemDescriptor>[],
+    RunCondition? runIf,
   }) {
     return addSystemAdapter(
       descriptor.buildAdapter(),
@@ -116,6 +149,7 @@ final class App implements AppBuilder {
       label: descriptor.ref.label,
       after: <SystemLabel>[for (final d in after) d.ref.label],
       before: <SystemLabel>[for (final d in before) d.ref.label],
+      runIf: runIf,
     );
   }
 
@@ -126,6 +160,7 @@ final class App implements AppBuilder {
     required SystemLabel label,
     List<SystemLabel> after = const <SystemLabel>[],
     List<SystemLabel> before = const <SystemLabel>[],
+    RunCondition? runIf,
   }) {
     _assertOpen();
     final target = _schedules[schedule];
@@ -138,15 +173,16 @@ final class App implements AppBuilder {
         label: label,
         after: after,
         before: before,
+        runIf: runIf,
       ),
     );
     return this;
   }
 
   @override
-  AppBuilder addEvent<T>() {
+  AppBuilder addEvent<T>({int? retainedUpdates = 2}) {
     _assertOpen();
-    world.registerEvent<T>();
+    world.registerEvent<T>(retainedUpdates: retainedUpdates);
     return this;
   }
 
@@ -223,7 +259,7 @@ final class App implements AppBuilder {
     if (schedule == null) {
       throw StateError('Unknown schedule: ${label.id}');
     }
-    schedule.run(profiler);
+    schedule.run(world, profiler);
     world.commands.apply();
   }
 
